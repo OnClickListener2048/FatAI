@@ -5,6 +5,7 @@ import io.ktor.client.plugins.sse.SSEBufferPolicy
 import io.ktor.client.plugins.sse.bufferPolicy
 import io.ktor.client.plugins.sse.sse
 import io.ktor.client.plugins.timeout
+import io.ktor.client.request.accept
 import io.ktor.client.request.header
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
@@ -12,9 +13,12 @@ import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
 import io.ktor.http.HttpMethod
 import io.ktor.http.contentType
+import io.ktor.http.withCharset
+import io.ktor.utils.io.charsets.Charsets
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
 class OpenAICompatibleProvider(
@@ -23,6 +27,9 @@ class OpenAICompatibleProvider(
 ) : ChatProvider {
 
     private val json = Json { ignoreUnknownKeys = true; isLenient = true }
+    private val jsonUtf8ContentType = ContentType.Application.Json.withCharset(Charsets.UTF_8)
+
+    private fun chatCompletionsUrl(baseUrl: String) = "${baseUrl.trimEnd('/')}/chat/completions"
 
     override suspend fun chat(
         messages: List<ChatMessage>,
@@ -38,12 +45,13 @@ class OpenAICompatibleProvider(
         )
 
         client.sse(
-            urlString = "${config.baseUrl}/chat/completions",
+            urlString = chatCompletionsUrl(config.baseUrl),
             request = {
                 method = HttpMethod.Post
                 header("Authorization", "Bearer ${config.apiKey}")
-                contentType(ContentType.Application.Json)
-                setBody(request)
+                accept(ContentType.Text.EventStream)
+                contentType(jsonUtf8ContentType)
+                setBody(json.encodeToString(request))
                 bufferPolicy(SSEBufferPolicy.Off)
                 timeout {
                     requestTimeoutMillis = 120_000L
@@ -91,10 +99,10 @@ class OpenAICompatibleProvider(
                 temperature = config.temperature,
                 top_p = config.topP
             )
-            val response = client.post("${config.baseUrl}/chat/completions") {
+            val response = client.post(chatCompletionsUrl(config.baseUrl)) {
                 header("Authorization", "Bearer ${config.apiKey}")
-                contentType(ContentType.Application.Json)
-                setBody(request)
+                contentType(jsonUtf8ContentType)
+                setBody(json.encodeToString(request))
             }
             val body = response.bodyAsText()
             val result = json.decodeFromString<OpenAIResponse>(body)
