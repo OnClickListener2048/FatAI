@@ -7,6 +7,7 @@ import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.text.font.FontFamily
 import ai.fatai.feature.settings.SettingsRepository
 import ai.fatai.feature.settings.ThemeMode
 import org.koin.compose.koinInject
@@ -44,5 +45,23 @@ fun FatAITheme(content: @Composable () -> Unit) {
         ThemeMode.LIGHT -> false
         ThemeMode.DARK -> true
     }
-    MaterialTheme(colorScheme = if (dark) DarkColors else LightColors, content = content)
+    MaterialTheme(
+        colorScheme = if (dark) DarkColors else LightColors,
+        typography = appTypography(platformFontFamily()),
+        content = content
+    )
 }
+
+@Composable
+private fun appTypography(fontFamily: FontFamily) = MaterialTheme.typography.copy(
+    headlineSmall = MaterialTheme.typography.headlineSmall.copy(fontFamily = fontFamily),
+    titleLarge = MaterialTheme.typography.titleLarge.copy(fontFamily = fontFamily),
+    titleMedium = MaterialTheme.typography.titleMedium.copy(fontFamily = fontFamily),
+    titleSmall = MaterialTheme.typography.titleSmall.copy(fontFamily = fontFamily),
+    bodyLarge = MaterialTheme.typography.bodyLarge.copy(fontFamily = fontFamily),
+    bodyMedium = MaterialTheme.typography.bodyMedium.copy(fontFamily = fontFamily),
+    bodySmall = MaterialTheme.typography.bodySmall.copy(fontFamily = fontFamily),
+    labelLarge = MaterialTheme.typography.labelLarge.copy(fontFamily = fontFamily),
+    labelMedium = MaterialTheme.typography.labelMedium.copy(fontFamily = fontFamily),
+    labelSmall = MaterialTheme.typography.labelSmall.copy(fontFamily = fontFamily)
+)

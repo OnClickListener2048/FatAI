@@ -23,6 +23,7 @@
     <string name="send">发送</string>
     <string name="regenerate">重新生成</string>
     <string name="continue_generation">继续生成</string>
+    <string name="copy_message">复制消息</string>
     <string name="thinking">正在思考…</string>
     <string name="welcome_title">今天想让我帮你做什么？</string><string name="welcome_provider">FatAI 已准备好使用 %1$s</string><string name="welcome_start_title">开始一次专注对话</string><string name="welcome_start_body">从侧栏选择工作区，将其记忆和指令带入当前对话。</string>
     <string name="fatai_settings">FatAI 设置</string>

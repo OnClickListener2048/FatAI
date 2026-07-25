@@ -65,7 +65,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -92,6 +94,7 @@ import io.github.vinceglb.filekit.PlatformFile
 import io.github.vinceglb.filekit.coil.AsyncImage as FileKitAsyncImage
 import compose.icons.FeatherIcons
 import compose.icons.feathericons.ChevronDown
+import compose.icons.feathericons.Copy
 import compose.icons.feathericons.Folder
 import compose.icons.feathericons.Menu
 import compose.icons.feathericons.MoreVertical
@@ -639,6 +642,7 @@ private fun ChatBubble(
     compactLayout: Boolean,
     attachments: List<FileAsset>
 ) {
+    val clipboardManager = LocalClipboardManager.current
     val isQuestion = msg.type == ChatItemType.Question
     val avatarSize = if (compactLayout) 24.dp else 28.dp
     val bubblePaddingHorizontal = if (compactLayout) 12.dp else 14.dp
@@ -688,6 +692,20 @@ private fun ChatBubble(
                 if (attachments.isNotEmpty()) {
                     Spacer(Modifier.height(8.dp))
                     MessageAttachments(attachments)
+                }
+                if (msg.content.isNotBlank() && !msg.isLoading) {
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                        IconButton(
+                            onClick = { clipboardManager.setText(AnnotatedString(msg.content)) },
+                            modifier = Modifier.size(32.dp)
+                        ) {
+                            Icon(
+                                FeatherIcons.Copy,
+                                contentDescription = stringResource(Res.string.copy_message),
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                    }
                 }
                 if (msg.isLoading || (!isQuestion && showThinking)) {
                     Spacer(Modifier.height(4.dp))
