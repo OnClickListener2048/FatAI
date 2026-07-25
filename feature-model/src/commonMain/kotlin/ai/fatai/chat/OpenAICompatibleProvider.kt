@@ -26,7 +26,11 @@ class OpenAICompatibleProvider(
     private val client: HttpClient
 ) : ChatProvider {
 
-    private val json = Json { ignoreUnknownKeys = true; isLenient = true }
+    private val json = Json {
+        ignoreUnknownKeys = true
+        isLenient = true
+        encodeDefaults = true
+    }
     private val jsonUtf8ContentType = ContentType.Application.Json.withCharset(Charsets.UTF_8)
 
     private fun chatCompletionsUrl(baseUrl: String) = "${baseUrl.trimEnd('/')}/chat/completions"
