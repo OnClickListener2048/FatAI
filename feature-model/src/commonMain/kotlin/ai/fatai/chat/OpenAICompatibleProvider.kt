@@ -1,20 +1,20 @@
 package ai.fatai.chat
 
 import io.ktor.client.HttpClient
-import io.ktor.client.plugins.sse.SSEBufferPolicy
-import io.ktor.client.plugins.sse.bufferPolicy
-import io.ktor.client.plugins.sse.sse
 import io.ktor.client.plugins.timeout
 import io.ktor.client.request.accept
 import io.ktor.client.request.header
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
+import io.ktor.client.statement.bodyAsChannel
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
 import io.ktor.http.HttpMethod
 import io.ktor.http.contentType
+import io.ktor.http.isSuccess
 import io.ktor.http.withCharset
 import io.ktor.utils.io.charsets.Charsets
+import io.ktor.utils.io.readUTF8Line
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.serialization.Serializable
@@ -44,31 +44,41 @@ class OpenAICompatibleProvider(
             top_p = config.topP
         )
 
-        client.sse(
-            urlString = chatCompletionsUrl(config.baseUrl),
-            request = {
-                method = HttpMethod.Post
-                header("Authorization", "Bearer ${config.apiKey}")
-                accept(ContentType.Text.EventStream)
-                contentType(jsonUtf8ContentType)
-                setBody(json.encodeToString(request))
-                bufferPolicy(SSEBufferPolicy.Off)
-                timeout {
-                    requestTimeoutMillis = 120_000L
-                    connectTimeoutMillis = 30_000L
-                    socketTimeoutMillis = 120_000L
-                }
+        val response = client.post(chatCompletionsUrl(config.baseUrl)) {
+            method = HttpMethod.Post
+            header("Authorization", "Bearer ${config.apiKey}")
+            accept(ContentType.Text.EventStream)
+            contentType(jsonUtf8ContentType)
+            setBody(json.encodeToString(request))
+            timeout {
+                requestTimeoutMillis = 120_000L
+                connectTimeoutMillis = 30_000L
+                socketTimeoutMillis = 120_000L
             }
-        ) {
-            var streamCompleted = false
-            incoming.collect { event ->
-                if (streamCompleted) return@collect
+        }
 
-                val data = event.data ?: return@collect
+        if (!response.status.isSuccess()) {
+            error("Chat request failed with ${response.status}: ${response.bodyAsText()}")
+        }
+
+        if (response.contentType()?.match(ContentType.Application.Json) == true) {
+            val result = json.decodeFromString<OpenAIResponse>(response.bodyAsText())
+            emit(ChatStreamChunk(
+                content = result.choices?.firstOrNull()?.message?.content.orEmpty(),
+                isDone = true,
+                finishReason = result.choices?.firstOrNull()?.finish_reason
+            ))
+        } else if (response.contentType()?.match(ContentType.Text.EventStream) == true) {
+            val channel = response.bodyAsChannel()
+            var streamCompleted = false
+            while (!streamCompleted) {
+                val line = channel.readUTF8Line() ?: break
+                if (!line.startsWith("data:")) continue
+                val data = line.removePrefix("data:").trimStart()
                 if (data == "[DONE]") {
                     streamCompleted = true
                     emit(ChatStreamChunk(content = "", isDone = true))
-                    return@collect
+                    continue
                 }
                 try {
                     val response = json.decodeFromString<OpenAIStreamResponse>(data)
@@ -83,6 +93,9 @@ class OpenAICompatibleProvider(
                     ))
                 } catch (_: Exception) { }
             }
+            if (!streamCompleted) emit(ChatStreamChunk(content = "", isDone = true))
+        } else {
+            error("Unsupported chat response Content-Type: ${response.contentType()}")
         }
     }
 
