@@ -18,7 +18,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -64,9 +63,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalClipboardManager
-import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -124,14 +121,6 @@ class AIChatScreen {
         val drawerState = rememberDrawerState(DrawerValue.Closed)
         val scope = rememberCoroutineScope()
         val snackbarHostState = remember { SnackbarHostState() }
-        val focusManager = LocalFocusManager.current
-        val keyboardController = LocalSoftwareKeyboardController.current
-        val screenTapInteraction = remember { MutableInteractionSource() }
-        val dismissKeyboard: () -> Unit = {
-            focusManager.clearFocus(force = true)
-            keyboardController?.hide()
-            Unit
-        }
         val attachFileTitle = stringResource(Res.string.attach_file)
         val filePicker = rememberFilePickerLauncher(
             type = FileKitType.File(listOf("pdf", "doc", "docx", "xls", "xlsx", "md", "txt", "png", "jpg", "jpeg", "webp")),
@@ -226,11 +215,6 @@ class AIChatScreen {
                     modifier = Modifier
                         .fillMaxSize()
                         .padding(padding)
-                        .clickable(
-                            interactionSource = screenTapInteraction,
-                            indication = null,
-                            onClick = dismissKeyboard
-                        )
                 ) {
                     if (state.currentConversationId == null) {
                         WelcomeScreen(
@@ -665,21 +649,25 @@ private fun ChatBubble(
             Spacer(Modifier.width(if (compactLayout) 6.dp else 8.dp))
         }
 
-        Card(
-            modifier = Modifier.widthIn(max = if (isQuestion) 520.dp else 720.dp),
-            colors = CardDefaults.cardColors(
-                containerColor = if (isQuestion)
-                    MaterialTheme.colorScheme.primaryContainer
-                else
-                    MaterialTheme.colorScheme.surface
-            ),
-            shape = RoundedCornerShape(
-                topStart = 14.dp, topEnd = 14.dp,
-                bottomStart = if (isQuestion) 14.dp else 6.dp,
-                bottomEnd = if (isQuestion) 6.dp else 14.dp
-            )
+        PlatformMessageContextMenu(
+            copyLabel = stringResource(Res.string.copy_message),
+            onCopy = { clipboardManager.setText(AnnotatedString(msg.content)) }
         ) {
-            Column(modifier = Modifier.padding(horizontal = bubblePaddingHorizontal, vertical = bubblePaddingVertical)) {
+            Card(
+                modifier = Modifier.widthIn(max = if (isQuestion) 520.dp else 720.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = if (isQuestion)
+                        MaterialTheme.colorScheme.primaryContainer
+                    else
+                        MaterialTheme.colorScheme.surface
+                ),
+                shape = RoundedCornerShape(
+                    topStart = 14.dp, topEnd = 14.dp,
+                    bottomStart = if (isQuestion) 14.dp else 6.dp,
+                    bottomEnd = if (isQuestion) 6.dp else 14.dp
+                )
+            ) {
+                Column(modifier = Modifier.padding(horizontal = bubblePaddingHorizontal, vertical = bubblePaddingVertical)) {
                 SelectionContainer {
                     when (msg.contentType) {
                         MessageContentType.Markdown -> MarkdownMessage(msg.content, compactLayout = compactLayout)
@@ -712,6 +700,7 @@ private fun ChatBubble(
                     ThinkingIndicator()
                 }
             }
+        }
         }
 
         if (isQuestion) {
