@@ -832,7 +832,12 @@ private fun ChatInputBar(
                 },
                 enabled = enabled && !isStreaming,
                 textStyle = MaterialTheme.typography.bodyMedium.copy(fontSize = 14.sp, lineHeight = 20.sp),
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .desktopSendOnEnter(
+                        enabled = enabled && (text.isNotBlank() || attachments.isNotEmpty()) && !isStreaming,
+                        onSend = onSend
+                    ),
                 trailingIcon = {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         IconButton(onClick = onAttach, enabled = enabled && !isStreaming) {
