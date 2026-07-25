@@ -6,9 +6,14 @@ import androidx.compose.runtime.Composable
 
 @Composable
 actual fun PlatformMessageContextMenu(
+    enabled: Boolean,
     copyLabel: String,
     onCopy: () -> Unit,
     content: @Composable () -> Unit
 ) {
-    ContextMenuArea(items = { listOf(ContextMenuItem(copyLabel, onCopy)) }, content = content)
+    if (enabled) {
+        ContextMenuArea(items = { listOf(ContextMenuItem(copyLabel, onCopy)) }, content = content)
+    } else {
+        content()
+    }
 }

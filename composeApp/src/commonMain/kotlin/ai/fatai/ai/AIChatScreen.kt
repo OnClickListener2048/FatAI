@@ -650,6 +650,7 @@ private fun ChatBubble(
         }
 
         PlatformMessageContextMenu(
+            enabled = !isQuestion,
             copyLabel = stringResource(Res.string.copy_message),
             onCopy = { clipboardManager.setText(AnnotatedString(msg.content)) }
         ) {
@@ -681,7 +682,7 @@ private fun ChatBubble(
                     Spacer(Modifier.height(8.dp))
                     MessageAttachments(attachments)
                 }
-                if (msg.content.isNotBlank() && !msg.isLoading) {
+                if (!isQuestion && msg.content.isNotBlank() && !msg.isLoading) {
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                         IconButton(
                             onClick = { clipboardManager.setText(AnnotatedString(msg.content)) },
