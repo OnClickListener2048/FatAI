@@ -5,7 +5,7 @@ import kotlinx.serialization.Serializable
 @Serializable
 enum class ProviderType(val displayName: String, val defaultBaseUrl: String, val defaultModel: String) {
     OpenAI("OpenAI", "https://api.openai.com/v1", "gpt-4o"),
-    DeepSeek("DeepSeek", "https://api.deepseek.com", "deepseek-chat"),
+    DeepSeek("DeepSeek", "https://api.deepseek.com", "deepseek-v4-flash"),
     Gemini("Gemini", "https://generativelanguage.googleapis.com", "gemini-2.0-flash"),
     Claude("Claude", "https://api.anthropic.com", "claude-3-5-sonnet-20241022"),
     OpenRouter("OpenRouter", "https://openrouter.ai/api/v1", "openai/gpt-4o"),

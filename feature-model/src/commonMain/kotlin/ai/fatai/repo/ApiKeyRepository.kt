@@ -49,6 +49,8 @@ class ApiKeyRepository(
     ): ApiKeyInfo {
         val id = Uuid.random().toString()
         val time = now()
+        val resolvedBaseUrl = baseUrl.ifBlank { providerType.defaultBaseUrl }
+        val resolvedModel = normalizeModel(providerType, model)
 
         if (setActive) {
             queries.deactivateAllApiKeys(currentUser.currentUserId)
@@ -60,13 +62,13 @@ class ApiKeyRepository(
             providerType = providerType,
             name = name,
             apiKey = apiKey,
-            baseUrl = baseUrl.ifBlank { providerType.defaultBaseUrl },
-            model = model.ifBlank { providerType.defaultModel },
+            baseUrl = resolvedBaseUrl,
+            model = resolvedModel,
             isActive = if (setActive) 1L else 0L,
             createdAt = time
         )
 
-        return ApiKeyInfo(id, currentUser.currentUserId, providerType, name, apiKey, baseUrl, model, setActive, time)
+        return ApiKeyInfo(id, currentUser.currentUserId, providerType, name, apiKey, resolvedBaseUrl, resolvedModel, setActive, time)
     }
 
     fun setActiveKey(id: String) {
@@ -88,8 +90,8 @@ class ApiKeyRepository(
                     providerType = key.providerType,
                     name = key.name,
                     apiKey = key.apiKey,
-                    baseUrl = key.baseUrl,
-                    model = key.model,
+                    baseUrl = key.baseUrl.ifBlank { key.providerType.defaultBaseUrl },
+                    model = normalizeModel(key.providerType, key.model),
                     isActive = if (key.isActive) 1L else 0L,
                     createdAt = key.createdAt
                 )
@@ -105,7 +107,15 @@ private fun ai.fatai.database.sqldelight.ApiKey.toApiKeyInfo() = ApiKeyInfo(
     name = name,
     apiKey = apiKey,
     baseUrl = baseUrl,
-    model = model,
+    model = normalizeModel(providerType, model),
     isActive = isActive != 0L,
     createdAt = createdAt
 )
+
+private fun normalizeModel(providerType: ProviderType, model: String): String = when {
+    model.isBlank() -> providerType.defaultModel
+    providerType == ProviderType.DeepSeek && model == LEGACY_DEEPSEEK_MODEL -> providerType.defaultModel
+    else -> model
+}
+
+private const val LEGACY_DEEPSEEK_MODEL = "deepseek-chat"
