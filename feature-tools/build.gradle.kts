@@ -5,7 +5,12 @@ plugins { alias(libs.plugins.kotlinMultiplatform); alias(libs.plugins.androidLib
 kotlin {
     androidTarget { compilerOptions { jvmTarget.set(JvmTarget.JVM_17) } }
     iosArm64(); iosSimulatorArm64(); jvm()
-    sourceSets { commonMain.dependencies { implementation(project(":core")) } }
+    sourceSets {
+        commonMain.dependencies {
+            implementation(project(":core"))
+            implementation(libs.ktor.serialization.kotlinx.json)
+        }
+    }
 }
 
 android { namespace = "ai.fatai.feature.tools"; compileSdk = libs.versions.android.compileSdk.get().toInt(); defaultConfig { minSdk = libs.versions.android.minSdk.get().toInt() } }

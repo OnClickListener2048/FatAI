@@ -20,6 +20,9 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import ai.fatai.feature.tools.OpenAICompatibleToolAdapter
+import ai.fatai.feature.tools.ToolDefinition
 
 class OpenAICompatibleProvider(
     override val type: ProviderType,
@@ -37,15 +40,19 @@ class OpenAICompatibleProvider(
 
     override suspend fun chat(
         messages: List<ChatMessage>,
-        config: ProviderConfig
+        config: ProviderConfig,
+        tools: List<ToolDefinition>
     ): Flow<ChatStreamChunk> = flow {
+        val toolPayload = OpenAICompatibleToolAdapter.encode(tools)
         val request = OpenAIRequest(
             model = config.model,
             messages = messages.map { OpenAIMessage(role = it.role, content = it.content) },
             stream = true,
             max_tokens = config.maxTokens,
             temperature = config.temperature,
-            top_p = config.topP
+            top_p = config.topP,
+            tools = toolPayload.value as? JsonArray,
+            tool_choice = if (tools.isEmpty()) null else "auto"
         )
 
         val response = client.post(chatCompletionsUrl(config.baseUrl)) {
@@ -105,16 +112,20 @@ class OpenAICompatibleProvider(
 
     override suspend fun chatSync(
         messages: List<ChatMessage>,
-        config: ProviderConfig
+        config: ProviderConfig,
+        tools: List<ToolDefinition>
     ): Result<String> {
         return try {
+            val toolPayload = OpenAICompatibleToolAdapter.encode(tools)
             val request = OpenAIRequest(
                 model = config.model,
                 messages = messages.map { OpenAIMessage(role = it.role, content = it.content) },
                 stream = false,
                 max_tokens = config.maxTokens,
                 temperature = config.temperature,
-                top_p = config.topP
+                top_p = config.topP,
+                tools = toolPayload.value as? JsonArray,
+                tool_choice = if (tools.isEmpty()) null else "auto"
             )
             val response = client.post(chatCompletionsUrl(config.baseUrl)) {
                 header("Authorization", "Bearer ${config.apiKey}")
@@ -130,7 +141,16 @@ class OpenAICompatibleProvider(
     }
 }
 
-@Serializable data class OpenAIRequest(val model: String, val messages: List<OpenAIMessage>, val stream: Boolean = true, val max_tokens: Int = 4096, val temperature: Float = 0.7f, val top_p: Float = 1.0f)
+@Serializable data class OpenAIRequest(
+    val model: String,
+    val messages: List<OpenAIMessage>,
+    val stream: Boolean = true,
+    val max_tokens: Int = 4096,
+    val temperature: Float = 0.7f,
+    val top_p: Float = 1.0f,
+    val tools: JsonArray? = null,
+    val tool_choice: String? = null
+)
 @Serializable data class OpenAIMessage(val role: String, val content: String)
 @Serializable data class OpenAIStreamResponse(val choices: List<OpenAIStreamChoice>? = null, val id: String? = null, val model: String? = null)
 @Serializable data class OpenAIStreamChoice(val delta: OpenAIDelta? = null, val finish_reason: String? = null, val index: Int? = null)

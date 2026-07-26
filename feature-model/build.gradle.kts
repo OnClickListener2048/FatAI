@@ -16,6 +16,7 @@ kotlin {
             implementation(project(":core"))
             implementation(project(":database"))
             implementation(project(":feature-user"))
+            implementation(project(":feature-tools"))
             implementation(libs.ktor.client.core)
             implementation(libs.ktor.client.content.negotiation)
             implementation(libs.ktor.serialization.kotlinx.json)

@@ -24,6 +24,10 @@ import ai.fatai.feature.workspace.WorkspaceRepository
 import ai.fatai.feature.settings.SettingsRepository
 import ai.fatai.feature.user.CurrentUserProvider
 import ai.fatai.feature.user.UserRepository
+import ai.fatai.feature.tools.DefaultTools
+import ai.fatai.feature.tools.DefaultToolProviderAdapters
+import ai.fatai.feature.tools.ToolProviderAdapterRegistry
+import ai.fatai.feature.tools.ToolRegistry
 import org.koin.core.context.startKoin
 import org.koin.core.logger.Level
 import org.koin.core.module.Module
@@ -66,6 +70,8 @@ val sharedModule = module {
     single { PromptTemplateRepository(get(), get()) }
     single { FileAssetRepository(get(), get()) }
     single { SettingsRepository(get(), get()) }
+    single { ToolRegistry(DefaultTools.all()) }
+    single { ToolProviderAdapterRegistry(DefaultToolProviderAdapters.all()) }
 
     single<ChatProvider> {
         println("OpenAICompatibleProvider")
