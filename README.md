@@ -99,9 +99,9 @@ FatAI baseline policy (role, instruction order, uncertainty, and capability boun
 
 ### Memory
 
-`MemoryEntry` supports `GLOBAL`, `WORKSPACE`, and `CONVERSATION` scopes plus `FACT` and `SUMMARY` kinds. Recall is a SQL query limited to 20 entries. When a completed conversation reaches exactly 500 messages, `ConversationMemoryService` asks the configured model for a conversation summary and stores it as conversation-scoped memory.
+`MemoryEntry` supports `GLOBAL`, `WORKSPACE`, and `CONVERSATION` scopes plus `FACT` and `SUMMARY` kinds. Recall is a SQL query limited to 20 entries. Explicit self-identification such as “I am Watson” or “我是 watson” is stored as a global preferred-name fact, including when an existing conversation is reopened, so it can be used in later chats. When a completed conversation reaches exactly 500 messages, `ConversationMemoryService` asks the configured model for a conversation summary and stores it as conversation-scoped memory.
 
-There is no embedding generation, vector database, semantic recall, deduplication, or UI for authoring and reviewing memory yet.
+There is no embedding generation, vector database, semantic recall, general automatic fact extraction, or UI for authoring and reviewing memory yet.
 
 ### Multimodal message model
 

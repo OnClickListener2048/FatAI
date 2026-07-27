@@ -55,6 +55,19 @@ class MemoryRepository(private val queries: WatsonQueries, private val currentUs
     }
 
     fun archive(id: String) = queries.archiveMemory(1L, now(), id, currentUser.currentUserId)
+
+    /** Replaces a named global profile fact, such as the user's preferred name. */
+    fun replaceGlobalProfileFact(prefix: String, content: String): MemoryEntry? {
+        if (queries.selectActiveGlobalFactByContent(currentUser.currentUserId, content).executeAsOneOrNull() != null) {
+            return null
+        }
+        queries.archiveGlobalFactsByPrefix(
+            updatedAt = now(),
+            userId = currentUser.currentUserId,
+            prefix = prefix
+        )
+        return save(content = content, scope = MemoryScope.GLOBAL, kind = MemoryKind.FACT)
+    }
 }
 
 private fun ai.fatai.database.sqldelight.MemoryEntry.toMemoryEntry() = MemoryEntry(

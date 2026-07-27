@@ -215,6 +215,16 @@ VALUES (:id, :userId, :scope, :workspaceId, :conversationId, :kind, :content, :c
 archiveMemory:
 UPDATE MemoryEntry SET isArchived = :isArchived, updatedAt = :updatedAt WHERE id = :id AND userId = :userId;
 
+selectActiveGlobalFactByContent:
+SELECT * FROM MemoryEntry
+WHERE userId = :userId AND scope = 'GLOBAL' AND kind = 'FACT' AND content = :content AND isArchived = 0
+LIMIT 1;
+
+archiveGlobalFactsByPrefix:
+UPDATE MemoryEntry
+SET isArchived = 1, updatedAt = :updatedAt
+WHERE userId = :userId AND scope = 'GLOBAL' AND kind = 'FACT' AND content LIKE (:prefix || '%') AND isArchived = 0;
+
 selectEnabledPromptTemplates:
 SELECT * FROM PromptTemplate
 WHERE userId = :userId AND isEnabled = 1 AND (workspaceId IS NULL OR workspaceId = :workspaceId)

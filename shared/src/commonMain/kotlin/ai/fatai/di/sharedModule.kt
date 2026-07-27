@@ -17,6 +17,7 @@ import ai.fatai.core.context.WorkspacePromptProvider
 import ai.fatai.feature.files.FileAssetRepository
 import ai.fatai.feature.memory.MemoryRepository
 import ai.fatai.feature.memory.ConversationMemoryService
+import ai.fatai.feature.memory.UserProfileMemoryService
 import ai.fatai.feature.model.ChatProviderModelGateway
 import ai.fatai.feature.model.ModelGateway
 import ai.fatai.feature.prompt.PromptTemplateRepository
@@ -80,6 +81,7 @@ val sharedModule = module {
 
     single<ModelGateway> { ChatProviderModelGateway(get()) }
     single { ConversationMemoryService(get(), get()) }
+    single { UserProfileMemoryService(get()) }
 
     single {
         ContextEngine(
