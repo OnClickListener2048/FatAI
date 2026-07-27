@@ -99,9 +99,9 @@ FatAI 基线策略（角色、指令优先级、不确定性与能力边界）
 
 ### Memory
 
-`MemoryEntry` 支持 `GLOBAL`、`WORKSPACE`、`CONVERSATION` 三个 Scope，以及 `FACT`、`SUMMARY` 两种 Kind。当前通过 SQL 查询最多召回 20 条记忆。对于“我是 watson”或“I am Watson”这类明确自我介绍，系统会保存为全局的偏好名称记忆；重新打开已有会话时也会补录，因此后续新会话可以使用。会话完成后，如果消息数恰好达到 500 的倍数，`ConversationMemoryService` 会请求当前模型生成摘要并将其保存为 Conversation Scope 的 Memory。
+`MemoryEntry` 支持 `GLOBAL`、`WORKSPACE`、`CONVERSATION` 三个 Scope，以及 `FACT`、`SUMMARY` 两种 Kind。当前通过 SQL 查询最多召回 20 条记忆。每次用户输入后，系统会使用当前激活的模型判断其中是否存在用户明确表达、且适合跨会话保留的长期事实、偏好、身份信息或长期目标；命中后会更新为全局用户记忆，供后续会话召回。临时请求、问题、密钥和凭据、健康信息及一次性任务细节不会保存。会话完成后，如果消息数恰好达到 500 的倍数，`ConversationMemoryService` 会请求当前模型生成摘要并将其保存为 Conversation Scope 的 Memory。
 
-当前没有 Embedding、向量数据库、语义召回、通用的自动事实提取机制，也没有记忆的新建、审核和管理界面。
+当前没有 Embedding、向量数据库、语义召回，也没有记忆的新建、审核和管理界面。
 
 ### 多模态消息模型
 

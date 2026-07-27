@@ -23,7 +23,7 @@ import ai.fatai.feature.model.ModelGateway
 import ai.fatai.feature.files.FileAsset
 import ai.fatai.feature.files.FileAssetRepository
 import ai.fatai.feature.memory.ConversationMemoryService
-import ai.fatai.feature.memory.UserProfileMemoryService
+import ai.fatai.feature.memory.UserMemoryExtractionService
 import ai.fatai.feature.workspace.INBOX_WORKSPACE_ID
 import ai.fatai.feature.workspace.Workspace
 import ai.fatai.feature.workspace.WorkspaceRepository
@@ -60,7 +60,7 @@ class AIChatViewModel(
     private val workspaceRepository: WorkspaceRepository,
     private val fileAssetRepository: FileAssetRepository,
     private val conversationMemoryService: ConversationMemoryService,
-    private val userProfileMemoryService: UserProfileMemoryService,
+    private val userMemoryExtractionService: UserMemoryExtractionService,
     private val currentUser: CurrentUserProvider
 ) {
 
@@ -205,14 +205,6 @@ class AIChatViewModel(
 
     fun selectConversation(conversationId: String) {
         val messages = chatRepository.getMessages(conversationId)
-        userProfileMemoryService.rememberFromConversation(
-            messages.map { message ->
-                ChatMessage(
-                    role = if (message.type == ChatItemType.Question) "user" else "assistant",
-                    content = message.content
-                )
-            }
-        )
         val assets = fileAssetRepository.forConversation(conversationId)
         _state.value = _state.value.copy(
             currentConversationId = conversationId,
@@ -273,7 +265,9 @@ class AIChatViewModel(
             type = ChatItemType.Question,
             contentType = MessageContentType.Text
         )
-        userProfileMemoryService.rememberFromUserMessage(userMsg.content)
+        screenModelScope.launch {
+            userMemoryExtractionService.rememberFromUserInput(userMsg.content, config)
+        }
         fileAssetRepository.assignPendingToMessage(conversationId, userMsg.id)
         val messages = _state.value.messages + userMsg
         _state.value = _state.value.copy(

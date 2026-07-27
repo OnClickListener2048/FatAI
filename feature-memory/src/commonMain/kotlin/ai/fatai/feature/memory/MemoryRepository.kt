@@ -56,8 +56,10 @@ class MemoryRepository(private val queries: WatsonQueries, private val currentUs
 
     fun archive(id: String) = queries.archiveMemory(1L, now(), id, currentUser.currentUserId)
 
-    /** Replaces a named global profile fact, such as the user's preferred name. */
-    fun replaceGlobalProfileFact(prefix: String, content: String): MemoryEntry? {
+    /** Upserts one model-classified global fact while retaining the latest value for its key. */
+    fun upsertGlobalFact(key: String, fact: String): MemoryEntry? {
+        val prefix = "$key: "
+        val content = "$prefix${fact.trim()}"
         if (queries.selectActiveGlobalFactByContent(currentUser.currentUserId, content).executeAsOneOrNull() != null) {
             return null
         }
