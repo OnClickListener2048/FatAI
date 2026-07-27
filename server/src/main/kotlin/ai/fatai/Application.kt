@@ -1,6 +1,8 @@
 package ai.fatai
 
 import ai.fatai.tools.DuckDuckGoSearchProvider
+import ai.fatai.tools.DuckDuckGoHtmlSearchClient
+import ai.fatai.tools.TimeAndDateWeatherProvider
 import ai.fatai.tools.WeatherService
 import ai.fatai.tools.WebSearchService
 import ai.fatai.tools.configureToolRoutes
@@ -28,10 +30,10 @@ fun Application.module() {
     }
     monitor.subscribe(ApplicationStopped) { httpClient.close() }
 
-    val searchProvider = DuckDuckGoSearchProvider(httpClient)
+    val htmlSearchClient = DuckDuckGoHtmlSearchClient(httpClient)
     configureToolRoutes(
-        searchService = WebSearchService(searchProvider),
-        weatherService = WeatherService(searchProvider)
+        searchService = WebSearchService(DuckDuckGoSearchProvider(htmlSearchClient)),
+        weatherService = WeatherService(TimeAndDateWeatherProvider(htmlSearchClient))
     )
     routing {
         get("/") {

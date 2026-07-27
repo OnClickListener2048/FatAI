@@ -164,6 +164,8 @@ SQLDelight 保存用户、会话、消息、Provider 配置、工作区、记忆
 
 当 Server 在 `http://127.0.0.1:8080` 运行时，桌面端 Chat 会向 OpenAI-compatible 模型提供独立的 `web_search` 与 `weather` Function。`web_search` 通过 `POST /v1/tools/search` 查询通用实时信息；`weather` 通过 `POST /v1/tools/weather` 接收明确地点，优先返回 Timeanddate 天气页面，并用于天气问题而不是通用网页搜索。默认开发 Provider 会解析 DuckDuckGo 的 HTML 网页搜索结果（不再使用结果受限的 Instant Answer API）；生产部署前仍应替换为 Tavily、Brave、Bing 或 SerpAPI 等正式服务。天气和其他依赖地点的问题请提供地点；FatAI 会先询问地点，而不会自行猜测。工具调用结果会在最终回复中保留 Markdown“信息来源”区块；搜索期间聊天气泡显示“正在搜索…”或“正在查询天气…”，不会再弹出打断操作的 Toast。
 
+Server 的代码边界也已分离：`WebSearch.kt` 只包含通用搜索契约和共享 DuckDuckGo HTML 传输层；`Weather.kt` 包含天气契约与 Timeanddate 专用排序逻辑。
+
 如果网络需要 HTTP 代理，Server 在获取搜索结果时会读取 `HTTPS_PROXY`、`HTTP_PROXY` 和 `ALL_PROXY`（也支持小写变量）。
 
 iOS 请使用 Xcode 打开 `iosApp/` 后运行。

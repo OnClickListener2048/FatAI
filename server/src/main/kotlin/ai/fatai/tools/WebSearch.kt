@@ -47,10 +47,6 @@ interface WebSearchProvider {
     suspend fun search(query: String, maxResults: Int): List<WebSearchResult>
 }
 
-interface WeatherProvider {
-    suspend fun weather(location: String, maxResults: Int): List<WebSearchResult>
-}
-
 class WebSearchService(private val provider: WebSearchProvider) {
     suspend fun search(request: WebSearchRequest): WebSearchResponse {
         val query = request.query.trim()
@@ -70,56 +66,25 @@ class WebSearchService(private val provider: WebSearchProvider) {
     }
 }
 
-@Serializable
-data class WeatherRequest(
-    val location: String,
-    val maxResults: Int = 3
-)
-
-@Serializable
-data class WeatherResponse(
-    val location: String,
-    val results: List<WebSearchResult>
-)
-
-class WeatherService(private val provider: WeatherProvider) {
-    suspend fun weather(request: WeatherRequest): WeatherResponse {
-        val location = request.location.trim()
-        require(location.isNotEmpty()) { "location must not be blank" }
-        require(location.length <= MAX_LOCATION_LENGTH) { "location must be at most $MAX_LOCATION_LENGTH characters" }
-        require(request.maxResults in 1..MAX_RESULTS) { "maxResults must be between 1 and $MAX_RESULTS" }
-
-        return WeatherResponse(
-            location = location,
-            results = provider.weather(location, request.maxResults)
-        )
-    }
-
-    private companion object {
-        const val MAX_LOCATION_LENGTH = 256
-        const val MAX_RESULTS = 5
-    }
-}
-
 /**
  * Keyless development provider backed by DuckDuckGo's HTML results page. The Instant Answer API
  * is not a general web-search API and frequently has no useful result for current-event queries.
  * Swap this implementation for Tavily, Bing, Brave, or SerpAPI in production; route and client
  * contracts stay unchanged.
  */
-class DuckDuckGoSearchProvider(private val client: HttpClient) : WebSearchProvider, WeatherProvider {
-    override suspend fun search(query: String, maxResults: Int): List<WebSearchResult> {
-        return requestResults(query)
-            .distinctBy(WebSearchResult::url)
-            .take(maxResults)
-    }
+class DuckDuckGoSearchProvider internal constructor(
+    private val htmlSearchClient: DuckDuckGoHtmlSearchClient
+) : WebSearchProvider {
+    override suspend fun search(query: String, maxResults: Int): List<WebSearchResult> =
+        htmlSearchClient.search(query, maxResults)
+}
 
-    override suspend fun weather(location: String, maxResults: Int): List<WebSearchResult> {
-        return requestResults("$location weather timeanddate")
-            .sortedBy { !it.url.contains(TIME_AND_DATE_HOST) }
+/** Shared keyless DuckDuckGo HTML transport for development-only providers. */
+internal class DuckDuckGoHtmlSearchClient(private val client: HttpClient) {
+    suspend fun search(query: String, maxResults: Int): List<WebSearchResult> =
+        requestResults(query)
             .distinctBy(WebSearchResult::url)
             .take(maxResults)
-    }
 
     private suspend fun requestResults(query: String): List<WebSearchResult> {
         val response = client.get(SEARCH_URL) {
@@ -157,7 +122,7 @@ class DuckDuckGoSearchProvider(private val client: HttpClient) : WebSearchProvid
                 title = title,
                 snippet = snippet,
                 url = url,
-                source = if (url.contains(TIME_AND_DATE_HOST)) "timeanddate" else SOURCE
+                source = SOURCE
             )
         }
     }
@@ -201,7 +166,6 @@ class DuckDuckGoSearchProvider(private val client: HttpClient) : WebSearchProvid
 
     private companion object {
         const val SOURCE = "duckduckgo"
-        const val TIME_AND_DATE_HOST = "timeanddate.com"
         const val SEARCH_URL = "https://html.duckduckgo.com/html/"
         const val USER_AGENT = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
 
