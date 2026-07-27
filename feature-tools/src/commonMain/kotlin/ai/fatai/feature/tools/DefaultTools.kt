@@ -1,5 +1,6 @@
 package ai.fatai.feature.tools
 
+import io.ktor.client.HttpClient
 import kotlinx.serialization.json.Json
 import kotlin.time.Clock
 import kotlin.time.ExperimentalTime
@@ -8,12 +9,13 @@ import kotlin.uuid.Uuid
 
 /** Built-in tools are offline-first and safe to expose on every supported platform. */
 object DefaultTools {
-    fun all(): List<Tool> = listOf(
+    fun all(httpClient: HttpClient): List<Tool> = listOf(
         CalculatorTool(),
         TextTransformTool(),
         JsonTool(),
         CurrentTimeTool(),
-        UuidTool()
+        UuidTool(),
+        WebSearchTool(httpClient)
     )
 }
 

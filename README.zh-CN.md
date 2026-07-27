@@ -43,7 +43,7 @@ FatAI 是一个仍在持续建设中的 AI Assistant。项目采用 KMP Feature 
 | `feature-workspace` | 默认 Personal 工作区、创建/选择/更新/归档仓库操作与工作区指令。 | 已实现；编辑与归档 UI 待完成 |
 | `feature-settings` | 跟随系统/浅色/深色主题的持久化。 | 已实现 |
 | `feature-knowledge` | 仅有 Gradle/KMP 模块骨架。 | 未实现 |
-| `feature-tools` | 仅有 Gradle/KMP 模块骨架。 | 未实现 |
+| `feature-tools` | Provider 无关的工具契约、OpenAI-compatible Schema、本地安全工具与 HTTP Web Search 工具。 | 已实现桌面端/本地 Server 链路 |
 | `feature-agent` | 仅有 Gradle/KMP 模块骨架。 | 未实现 |
 | `shared` | 在迁移期间提供 Koin 装配与平台启动兼容层。 | 兼容层；不要加入新的 Feature 逻辑 |
 | `composeApp` | Decompose 根路由、Chat/Settings UI、资源、平台入口与响应式布局。 | 已实现 |
@@ -58,6 +58,7 @@ Knowledge、Tools、Agent 模块已经被纳入项目结构，但当前没有领
 - 会话创建、搜索、置顶、归档、删除、首条消息自动生成标题；进入聊天页时会恢复最近一次保存的会话及消息。
 - SSE 流式回复、停止生成、重新生成与续写。
 - 流式请求期间显示带动画的“正在思考”。
+- 支持 OpenAI-compatible Function Calling；Web Search 会调用本地 FatAI Server，将带 URL 的结果返回给模型后再生成最终回答。
 - 助手 Markdown 渲染：GFM 表格、链接、代码块，以及面向手机的字号。
 - 使用 Decompose 在 Chat 与 Settings 间进行栈式导航。
 - `AppSetting` 持久化跟随系统/浅色/深色主题；设置页通过带选中态的弹窗切换主题。
@@ -95,7 +96,7 @@ FatAI 基线策略（角色、指令优先级、不确定性与能力边界）
   → OpenAI-compatible Model Gateway
 ```
 
-`PromptProvider` 是扩展点。基线策略会将聊天历史、记忆、文件元数据、引用文本与检索结果视为参考数据，不能借此覆盖应用或工作区指令。后续的 RAG、MCP 工具结果或 Agent State 都可以以 Provider 的形式接入，无需和聊天页面直接耦合。
+`PromptProvider` 是扩展点。基线策略会将聊天历史、记忆、文件元数据、引用文本、检索结果与工具结果视为参考数据，不能借此覆盖应用或工作区指令。后续的 RAG、MCP 工具结果或 Agent State 都可以以 Provider 的形式接入，无需和聊天页面直接耦合。
 
 ### Memory
 
@@ -160,6 +161,8 @@ SQLDelight 保存用户、会话、消息、Provider 配置、工作区、记忆
 # Ktor Server 示例
 ./gradlew :server:run
 ```
+
+当 Server 在 `http://127.0.0.1:8080` 运行时，桌面端 Chat 会向 OpenAI-compatible 模型提供 `web_search` Function。用户可直接询问需要最新信息的问题，例如“搜索 Kotlin Multiplatform 最新发布动态”；模型选择该工具后，桌面端会调用 `POST /v1/tools/search`，将受长度限制的结果返回给模型，再流式输出最终回答。默认开发搜索 Provider 是 DuckDuckGo Instant Answer API，部署生产环境前应替换为合适的生产搜索服务。
 
 iOS 请使用 Xcode 打开 `iosApp/` 后运行。
 

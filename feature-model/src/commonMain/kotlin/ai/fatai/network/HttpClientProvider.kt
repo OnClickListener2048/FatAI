@@ -12,6 +12,6 @@ fun provideHttpClient(): HttpClient = createHttpClient().config {
                 println("KtorLog => $message") // 打印到控制台
             }
         }
-        level = LogLevel.ALL // 级别可以是 NONE, INFO, HEADERS, BODY, ALL
+        level = LogLevel.INFO // Never log request headers or bodies: they may contain API keys and user content.
     }
 }

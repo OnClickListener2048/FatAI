@@ -1,6 +1,7 @@
 package ai.fatai.feature.tools
 
 import ai.fatai.chat.ProviderType
+import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonElement
 
 /**
@@ -156,6 +157,7 @@ data class ProviderToolPayload(
     val value: JsonElement
 )
 
+@Serializable
 data class ProviderToolCall(
     val id: String? = null,
     val name: String,

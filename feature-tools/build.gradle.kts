@@ -1,6 +1,6 @@
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
-plugins { alias(libs.plugins.kotlinMultiplatform); alias(libs.plugins.androidLibrary) }
+plugins { alias(libs.plugins.kotlinMultiplatform); alias(libs.plugins.kotlinSerialization); alias(libs.plugins.androidLibrary) }
 
 kotlin {
     androidTarget { compilerOptions { jvmTarget.set(JvmTarget.JVM_17) } }
@@ -9,6 +9,7 @@ kotlin {
         commonMain.dependencies {
             implementation(project(":core"))
             implementation(libs.ktor.serialization.kotlinx.json)
+            implementation(libs.ktor.client.core)
         }
     }
 }

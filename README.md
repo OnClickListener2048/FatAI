@@ -43,7 +43,7 @@ The application UI is Compose Multiplatform. SQLDelight drivers and Ktor engines
 | `feature-workspace` | Default Personal workspace, create/select/update/archive repository operations, workspace instructions. | Implemented; editing/archive UI is pending |
 | `feature-settings` | Persisted system/light/dark theme preference. | Implemented |
 | `feature-knowledge` | Gradle/KMP module scaffold only. | Not implemented |
-| `feature-tools` | Gradle/KMP module scaffold only. | Not implemented |
+| `feature-tools` | Provider-neutral tool contracts, OpenAI-compatible schemas, local safe utilities, and an HTTP-backed web-search tool. | Implemented for the desktop/server local setup |
 | `feature-agent` | Gradle/KMP module scaffold only. | Not implemented |
 | `shared` | Temporary Koin composition and platform bootstrap bridge while migrations are completed. | Compatibility layer; do not add new feature logic |
 | `composeApp` | Decompose root navigation, chat/settings UI, resources, platform entry points, and responsive layouts. | Implemented |
@@ -58,6 +58,7 @@ The project includes all planned feature modules, but Knowledge, Tools, and Agen
 - Conversation create, search, pin, archive, delete, automatic first-message title, and restoration of the latest saved conversation and messages when the chat screen opens.
 - SSE streaming, stop generation, regenerate, and continue generation.
 - A streaming “Thinking…” indicator.
+- OpenAI-compatible function calling for built-in tools; web searches call the local FatAI server and return cited result URLs to the model before it writes the final answer.
 - Assistant Markdown rendering with GFM tables, links, code blocks, and mobile-oriented typography.
 - Decompose stack navigation between Chat and Settings.
 - System, light, and dark themes persisted in `AppSetting`, selected through a dialog with an explicit selected state.
@@ -95,7 +96,7 @@ FatAI baseline policy (role, instruction order, uncertainty, and capability boun
   → OpenAI-compatible model gateway
 ```
 
-`PromptProvider` is the extension point. The baseline policy treats conversation history, memories, file metadata, quoted text, and retrieved material as reference data, so they cannot replace application or workspace instructions. A future RAG provider, MCP tool-result provider, or agent state provider can join the pipeline without coupling itself to the chat screen.
+`PromptProvider` is the extension point. The baseline policy treats conversation history, memories, file metadata, quoted text, retrieved material, and tool results as reference data, so they cannot replace application or workspace instructions. A future RAG provider, MCP tool-result provider, or agent state provider can join the pipeline without coupling itself to the chat screen.
 
 ### Memory
 
@@ -160,6 +161,8 @@ SQLDelight stores users, conversations, messages, provider configurations, works
 # Sample Ktor server
 ./gradlew :server:run
 ```
+
+With the server running at `http://127.0.0.1:8080`, desktop chat exposes a `web_search` function to OpenAI-compatible models. Ask for current information such as “search the web for Kotlin Multiplatform release news”; when the model chooses the tool, the desktop app calls `POST /v1/tools/search`, returns the bounded result set to the model, and then streams its final answer. The default development search provider is DuckDuckGo's instant-answer API; replace it with a production provider before deployment.
 
 Open `iosApp/` in Xcode to run the iOS app.
 

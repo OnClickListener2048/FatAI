@@ -1,6 +1,7 @@
 package ai.fatai.chat
 
 import kotlinx.serialization.Serializable
+import ai.fatai.feature.tools.ProviderToolCall
 
 @Serializable
 data class ChatMessage(
@@ -8,12 +9,12 @@ data class ChatMessage(
     val content: String
 )
 
-@Serializable
 data class ChatStreamChunk(
     val content: String,
     val isDone: Boolean = false,
     val finishReason: String? = null,
-    val usage: ChatUsage? = null
+    val usage: ChatUsage? = null,
+    val toolCalls: List<ProviderToolCall> = emptyList()
 )
 
 @Serializable

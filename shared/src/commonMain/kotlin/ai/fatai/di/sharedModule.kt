@@ -71,7 +71,7 @@ val sharedModule = module {
     single { PromptTemplateRepository(get(), get()) }
     single { FileAssetRepository(get(), get()) }
     single { SettingsRepository(get(), get()) }
-    single { ToolRegistry(DefaultTools.all()) }
+    single { ToolRegistry(DefaultTools.all(get())) }
     single { ToolProviderAdapterRegistry(DefaultToolProviderAdapters.all()) }
 
     single<ChatProvider> {
