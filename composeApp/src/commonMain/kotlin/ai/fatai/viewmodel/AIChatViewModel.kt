@@ -56,7 +56,7 @@ data class ChatScreenState(
     val activeConfig: ProviderConfig? = null
 )
 
-enum class AssistantActivity { Thinking, Searching }
+enum class AssistantActivity { Thinking, Searching, CheckingWeather, UsingTool }
 
 class AIChatViewModel(
     private val chatRepository: ChatRepository,
@@ -338,7 +338,7 @@ class AIChatViewModel(
                     }
                 }
                 if (toolCalls.isNotEmpty() && !shouldStopStream) {
-                    _state.value = _state.value.copy(assistantActivity = AssistantActivity.Searching)
+                    _state.value = _state.value.copy(assistantActivity = toolCalls.activity())
                     val toolResults = toolCalls.map { call ->
                         toolRegistry.execute(ToolCall(call.name, call.arguments))
                     }
@@ -406,6 +406,12 @@ class AIChatViewModel(
             appendLine()
         }
         append("Use the relevant results to answer the user. Cite result URLs when they are available.")
+    }
+
+    private fun List<ai.fatai.feature.tools.ProviderToolCall>.activity(): AssistantActivity = when {
+        any { it.name == "weather" } -> AssistantActivity.CheckingWeather
+        any { it.name == "web_search" } -> AssistantActivity.Searching
+        else -> AssistantActivity.UsingTool
     }
 
     private fun ChatItem.withToolSources(executions: List<ai.fatai.feature.tools.ToolExecution>): ChatItem {

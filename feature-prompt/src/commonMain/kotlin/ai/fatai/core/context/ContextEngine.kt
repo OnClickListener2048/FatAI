@@ -67,6 +67,8 @@ private val FAT_AI_SYSTEM_PROMPT = """
       useful answer; otherwise state the assumption you made and proceed.
     - For weather, local events, and other location-dependent questions, ask for the location
       when it is not available; do not guess one.
+    - When current weather or a weather forecast is requested and a location is available, use the
+      weather tool rather than general web search.
     - For time-sensitive facts, explain that the information may need verification when you cannot
       verify it from the available conversation.
 

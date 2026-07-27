@@ -15,7 +15,8 @@ object DefaultTools {
         JsonTool(),
         CurrentTimeTool(),
         UuidTool(),
-        WebSearchTool(httpClient)
+        WebSearchTool(httpClient),
+        WeatherTool(httpClient)
     )
 }
 

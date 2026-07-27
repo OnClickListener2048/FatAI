@@ -769,7 +769,14 @@ private fun ActivityIndicator(activity: AssistantActivity?) {
         )
         Spacer(Modifier.width(7.dp))
         Text(
-            stringResource(if (activity == AssistantActivity.Searching) Res.string.searching else Res.string.thinking),
+            stringResource(
+                when (activity) {
+                    AssistantActivity.Searching -> Res.string.searching
+                    AssistantActivity.CheckingWeather -> Res.string.checking_weather
+                    AssistantActivity.UsingTool -> Res.string.using_tool
+                    else -> Res.string.thinking
+                }
+            ),
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )

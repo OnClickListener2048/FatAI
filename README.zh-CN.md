@@ -162,7 +162,7 @@ SQLDelight 保存用户、会话、消息、Provider 配置、工作区、记忆
 ./gradlew :server:run
 ```
 
-当 Server 在 `http://127.0.0.1:8080` 运行时，桌面端 Chat 会向 OpenAI-compatible 模型提供 `web_search` Function。用户可直接询问需要最新信息的问题，例如“搜索 Kotlin Multiplatform 最新发布动态”；模型选择该工具后，桌面端会调用 `POST /v1/tools/search`，将受长度限制的结果返回给模型，再流式输出最终回答。默认开发搜索 Provider 会解析 DuckDuckGo 的 HTML 网页搜索结果（不再使用结果受限的 Instant Answer API），因此可返回实时信息相关网页；天气查询会优先检索和排序 Timeanddate 结果。生产部署前仍应替换为 Tavily、Brave、Bing 或 SerpAPI 等正式服务。天气和其他依赖地点的问题请提供地点；FatAI 会先询问地点，而不会自行猜测。工具调用结果会在最终回复中保留 Markdown“信息来源”区块；搜索期间聊天气泡显示“正在搜索…”，不会再弹出打断操作的 Toast。
+当 Server 在 `http://127.0.0.1:8080` 运行时，桌面端 Chat 会向 OpenAI-compatible 模型提供独立的 `web_search` 与 `weather` Function。`web_search` 通过 `POST /v1/tools/search` 查询通用实时信息；`weather` 通过 `POST /v1/tools/weather` 接收明确地点，优先返回 Timeanddate 天气页面，并用于天气问题而不是通用网页搜索。默认开发 Provider 会解析 DuckDuckGo 的 HTML 网页搜索结果（不再使用结果受限的 Instant Answer API）；生产部署前仍应替换为 Tavily、Brave、Bing 或 SerpAPI 等正式服务。天气和其他依赖地点的问题请提供地点；FatAI 会先询问地点，而不会自行猜测。工具调用结果会在最终回复中保留 Markdown“信息来源”区块；搜索期间聊天气泡显示“正在搜索…”或“正在查询天气…”，不会再弹出打断操作的 Toast。
 
 如果网络需要 HTTP 代理，Server 在获取搜索结果时会读取 `HTTPS_PROXY`、`HTTP_PROXY` 和 `ALL_PROXY`（也支持小写变量）。
 

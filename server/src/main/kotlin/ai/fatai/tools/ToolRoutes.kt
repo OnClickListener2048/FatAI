@@ -12,7 +12,7 @@ import io.ktor.server.routing.routing
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
-fun Application.configureToolRoutes(searchService: WebSearchService) {
+fun Application.configureToolRoutes(searchService: WebSearchService, weatherService: WeatherService) {
     val json = Json { ignoreUnknownKeys = true; explicitNulls = false }
 
     routing {
@@ -44,6 +44,35 @@ fun Application.configureToolRoutes(searchService: WebSearchService) {
                 call.respondJson(
                     json,
                     ApiError("SEARCH_UNAVAILABLE", exception.message.orEmpty()),
+                    HttpStatusCode.BadGateway
+                )
+            }
+        }
+
+        post("/v1/tools/weather") {
+            val request = try {
+                json.decodeFromString<WeatherRequest>(call.receiveText())
+            } catch (_: Exception) {
+                call.respondJson(
+                    json,
+                    ApiError("INVALID_REQUEST", "Request body must be valid JSON."),
+                    HttpStatusCode.BadRequest
+                )
+                return@post
+            }
+
+            try {
+                call.respondJson(json, weatherService.weather(request))
+            } catch (exception: IllegalArgumentException) {
+                call.respondJson(
+                    json,
+                    ApiError("INVALID_REQUEST", exception.message.orEmpty()),
+                    HttpStatusCode.BadRequest
+                )
+            } catch (exception: WebSearchUnavailableException) {
+                call.respondJson(
+                    json,
+                    ApiError("WEATHER_UNAVAILABLE", exception.message.orEmpty()),
                     HttpStatusCode.BadGateway
                 )
             }

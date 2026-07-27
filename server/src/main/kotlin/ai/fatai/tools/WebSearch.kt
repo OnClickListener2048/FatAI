@@ -47,6 +47,10 @@ interface WebSearchProvider {
     suspend fun search(query: String, maxResults: Int): List<WebSearchResult>
 }
 
+interface WeatherProvider {
+    suspend fun weather(location: String, maxResults: Int): List<WebSearchResult>
+}
+
 class WebSearchService(private val provider: WebSearchProvider) {
     suspend fun search(request: WebSearchRequest): WebSearchResponse {
         val query = request.query.trim()
@@ -66,16 +70,60 @@ class WebSearchService(private val provider: WebSearchProvider) {
     }
 }
 
+@Serializable
+data class WeatherRequest(
+    val location: String,
+    val maxResults: Int = 3
+)
+
+@Serializable
+data class WeatherResponse(
+    val location: String,
+    val results: List<WebSearchResult>
+)
+
+class WeatherService(private val provider: WeatherProvider) {
+    suspend fun weather(request: WeatherRequest): WeatherResponse {
+        val location = request.location.trim()
+        require(location.isNotEmpty()) { "location must not be blank" }
+        require(location.length <= MAX_LOCATION_LENGTH) { "location must be at most $MAX_LOCATION_LENGTH characters" }
+        require(request.maxResults in 1..MAX_RESULTS) { "maxResults must be between 1 and $MAX_RESULTS" }
+
+        return WeatherResponse(
+            location = location,
+            results = provider.weather(location, request.maxResults)
+        )
+    }
+
+    private companion object {
+        const val MAX_LOCATION_LENGTH = 256
+        const val MAX_RESULTS = 5
+    }
+}
+
 /**
  * Keyless development provider backed by DuckDuckGo's HTML results page. The Instant Answer API
  * is not a general web-search API and frequently has no useful result for current-event queries.
  * Swap this implementation for Tavily, Bing, Brave, or SerpAPI in production; route and client
  * contracts stay unchanged.
  */
-class DuckDuckGoSearchProvider(private val client: HttpClient) : WebSearchProvider {
+class DuckDuckGoSearchProvider(private val client: HttpClient) : WebSearchProvider, WeatherProvider {
     override suspend fun search(query: String, maxResults: Int): List<WebSearchResult> {
+        return requestResults(query)
+            .distinctBy(WebSearchResult::url)
+            .take(maxResults)
+    }
+
+    override suspend fun weather(location: String, maxResults: Int): List<WebSearchResult> {
+        return requestResults("$location weather timeanddate")
+            .sortedBy { !it.url.contains(TIME_AND_DATE_HOST) }
+            .distinctBy(WebSearchResult::url)
+            .take(maxResults)
+    }
+
+    private suspend fun requestResults(query: String): List<WebSearchResult> {
         val response = client.get(SEARCH_URL) {
-            parameter("q", queryForProvider(query))
+            parameter("q", query)
             header(HttpHeaders.UserAgent, USER_AGENT)
             header(HttpHeaders.Accept, "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
             header(HttpHeaders.AcceptLanguage, "en-US,en;q=0.9,zh-CN;q=0.8")
@@ -85,9 +133,6 @@ class DuckDuckGoSearchProvider(private val client: HttpClient) : WebSearchProvid
         }
 
         return parseResults(response.bodyAsText())
-            .let { results -> if (isWeatherQuery(query)) results.sortedBy { !it.url.contains(TIME_AND_DATE_HOST) } else results }
-            .distinctBy(WebSearchResult::url)
-            .take(maxResults)
     }
 
     /**
@@ -116,11 +161,6 @@ class DuckDuckGoSearchProvider(private val client: HttpClient) : WebSearchProvid
             )
         }
     }
-
-    private fun queryForProvider(query: String): String =
-        if (isWeatherQuery(query)) "$query timeanddate" else query
-
-    private fun isWeatherQuery(query: String): Boolean = weatherQueryRegex.containsMatchIn(query)
 
     private fun destinationUrl(rawHref: String): String? {
         val href = htmlDecode(rawHref).let { if (it.startsWith("//")) "https:$it" else it }
@@ -176,7 +216,6 @@ class DuckDuckGoSearchProvider(private val client: HttpClient) : WebSearchProvid
         val tagRegex = Regex("""<[^>]+>""")
         val whitespaceRegex = Regex("""\s+""")
         val numericEntityRegex = Regex("""&#(x[0-9a-fA-F]+|\d+);""", RegexOption.IGNORE_CASE)
-        val weatherQueryRegex = Regex("""(?i)\b(weather|forecast|temperature|rain|snow)\b|天气|气温|温度|降雨|下雨|下雪|预报""")
     }
 }
 

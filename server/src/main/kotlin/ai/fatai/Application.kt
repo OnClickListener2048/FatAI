@@ -1,6 +1,7 @@
 package ai.fatai
 
 import ai.fatai.tools.DuckDuckGoSearchProvider
+import ai.fatai.tools.WeatherService
 import ai.fatai.tools.WebSearchService
 import ai.fatai.tools.configureToolRoutes
 import io.ktor.server.application.*
@@ -27,7 +28,11 @@ fun Application.module() {
     }
     monitor.subscribe(ApplicationStopped) { httpClient.close() }
 
-    configureToolRoutes(WebSearchService(DuckDuckGoSearchProvider(httpClient)))
+    val searchProvider = DuckDuckGoSearchProvider(httpClient)
+    configureToolRoutes(
+        searchService = WebSearchService(searchProvider),
+        weatherService = WeatherService(searchProvider)
+    )
     routing {
         get("/") {
             call.respondText("Ktor: ${Greeting().greet()}")
