@@ -21,7 +21,7 @@ class WebSearchTool(
     override val definition = ToolDefinition(
         name = "web_search",
         displayName = "Web search",
-        description = "Searches the public web for current information. Use it when fresh web results are needed.",
+        description = "Searches the public web for current information. Use it when fresh web results are needed; weather searches need a location.",
         parameters = listOf(
             ToolParameter("query", "Focused web search query.", true),
             ToolParameter("max_results", "Number of results from 1 to 10; defaults to 5.")
@@ -52,14 +52,17 @@ class WebSearchTool(
             return ToolResult.Failure("SEARCH_UNAVAILABLE", "The local FatAI search server returned an invalid response.")
         }
         if (payload.results.isEmpty()) return ToolResult.Success("No web results were found for: ${payload.query}")
-        return ToolResult.Success(buildString {
+        return ToolResult.Success(
+            content = buildString {
             appendLine("Web results for: ${payload.query}")
             payload.results.forEachIndexed { index, result ->
                 appendLine("${index + 1}. ${result.title}")
                 appendLine("${result.snippet}")
                 appendLine("Source: ${result.url}")
             }
-        }.trim())
+            }.trim(),
+            sources = payload.results.map { result -> ToolSource(result.title, result.url) }
+        )
     }
 
     private companion object {

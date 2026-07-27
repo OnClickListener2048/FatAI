@@ -10,7 +10,9 @@ import io.ktor.server.response.respondText
 import io.ktor.server.routing.get
 import io.ktor.server.routing.routing
 import io.ktor.client.*
-import io.ktor.client.engine.cio.*
+import io.ktor.client.engine.ProxyBuilder
+import io.ktor.client.engine.okhttp.OkHttp
+import io.ktor.http.Url
 
 fun main() {
     embeddedServer(Netty, port = SERVER_PORT, host = "0.0.0.0", module = Application::module)
@@ -18,7 +20,11 @@ fun main() {
 }
 
 fun Application.module() {
-    val httpClient = HttpClient(CIO)
+    val httpClient = HttpClient(OkHttp) {
+        engine {
+            environmentHttpProxy()?.let { proxy = ProxyBuilder.http(it) }
+        }
+    }
     monitor.subscribe(ApplicationStopped) { httpClient.close() }
 
     configureToolRoutes(WebSearchService(DuckDuckGoSearchProvider(httpClient)))
@@ -28,3 +34,13 @@ fun Application.module() {
         }
     }
 }
+
+/**
+ * CIO does not automatically honor shell proxy variables. Respect the conventional variables so
+ * local development servers can reach web providers on networks that require an HTTP proxy.
+ */
+private fun environmentHttpProxy(): Url? = sequenceOf(
+    "HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy", "ALL_PROXY", "all_proxy"
+).mapNotNull(System::getenv)
+    .firstOrNull { it.startsWith("http://") || it.startsWith("https://") }
+    ?.let(::Url)

@@ -34,7 +34,10 @@ data class ToolCall(
 )
 
 sealed interface ToolResult {
-    data class Success(val content: String) : ToolResult
+    data class Success(
+        val content: String,
+        val sources: List<ToolSource> = emptyList()
+    ) : ToolResult
 
     data class Failure(
         val code: String,
@@ -42,9 +45,16 @@ sealed interface ToolResult {
     ) : ToolResult
 }
 
+/** A user-visible provenance record for information returned by a tool. */
+data class ToolSource(
+    val label: String,
+    val url: String? = null
+)
+
 data class ToolExecution(
     val call: ToolCall,
-    val result: ToolResult
+    val result: ToolResult,
+    val toolDisplayName: String? = null
 )
 
 /** Limits execution to explicitly approved tools and keeps results bounded for prompt/UI use. */
@@ -119,7 +129,7 @@ class ToolRegistry(
         } catch (_: Exception) {
             ToolResult.Failure("TOOL_EXECUTION_FAILED", "Tool execution failed.")
         }
-        return ToolExecution(call, result.truncateTo(policy.maxOutputCharacters))
+        return ToolExecution(call, result.truncateTo(policy.maxOutputCharacters), tool.definition.displayName)
     }
 
     private fun ToolResult.truncateTo(maxLength: Int): ToolResult = when (this) {

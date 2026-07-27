@@ -49,11 +49,14 @@ data class ChatScreenState(
     val messages: List<ChatItem> = emptyList(),
     val currentConversationId: String? = null,
     val isStreaming: Boolean = false,
+    val assistantActivity: AssistantActivity? = null,
     val isLoading: Boolean = false,
     val inputText: String = "",
     val activeProvider: ProviderType = ProviderType.OpenAI,
     val activeConfig: ProviderConfig? = null
 )
+
+enum class AssistantActivity { Thinking, Searching }
 
 class AIChatViewModel(
     private val chatRepository: ChatRepository,
@@ -301,7 +304,8 @@ class AIChatViewModel(
 
         _state.value = _state.value.copy(
             messages = messages + assistantMsg,
-            isStreaming = true
+            isStreaming = true,
+            assistantActivity = AssistantActivity.Thinking
         )
 
         shouldStopStream = false
@@ -334,10 +338,11 @@ class AIChatViewModel(
                     }
                 }
                 if (toolCalls.isNotEmpty() && !shouldStopStream) {
-                    _toastEvents.emit("Searching the web…")
+                    _state.value = _state.value.copy(assistantActivity = AssistantActivity.Searching)
                     val toolResults = toolCalls.map { call ->
                         toolRegistry.execute(ToolCall(call.name, call.arguments))
                     }
+                    _state.value = _state.value.copy(assistantActivity = AssistantActivity.Thinking)
                     collectModelResponse(
                         prompt = prompt + ChatMessage(
                             role = "system",
@@ -354,6 +359,8 @@ class AIChatViewModel(
                             updateMessageInState(assistantMsg)
                         }
                     }
+                    assistantMsg = assistantMsg.withToolSources(toolResults)
+                    updateMessageInState(assistantMsg)
                 }
                 if (!shouldStopStream) {
                     completeAssistantResponse(conversationId, messages, assistantMsg, config)
@@ -364,7 +371,7 @@ class AIChatViewModel(
                     isLoading = false
                 )
                 updateMessageInState(assistantMsg)
-                _state.value = _state.value.copy(isStreaming = false)
+                _state.value = _state.value.copy(isStreaming = false, assistantActivity = null)
             }
         }
     }
@@ -401,6 +408,27 @@ class AIChatViewModel(
         append("Use the relevant results to answer the user. Cite result URLs when they are available.")
     }
 
+    private fun ChatItem.withToolSources(executions: List<ai.fatai.feature.tools.ToolExecution>): ChatItem {
+        val externalSources = executions.flatMap { execution ->
+            (execution.result as? ToolResult.Success)?.sources.orEmpty()
+        }.distinctBy { source -> source.url ?: source.label }
+        val localToolSources = executions
+            .filter { execution -> execution.result is ToolResult.Success }
+            .filter { execution -> (execution.result as ToolResult.Success).sources.isEmpty() }
+            .mapNotNull { execution -> execution.toolDisplayName?.let { "FatAI built-in tool: $it" } }
+
+        if (externalSources.isEmpty() && localToolSources.isEmpty()) return this
+        val references = buildString {
+            appendLine("#### Information sources")
+            externalSources.forEach { source ->
+                val label = source.label.replace("]", "\\]")
+                if (source.url != null) appendLine("- [$label](${source.url})") else appendLine("- $label")
+            }
+            localToolSources.forEach { appendLine("- $it") }
+        }.trimEnd()
+        return copy(content = content.trimEnd() + "\\n\\n---\\n\\n" + references)
+    }
+
     private fun completeAssistantResponse(
         conversationId: String,
         messages: List<ChatItem>,
@@ -413,7 +441,7 @@ class AIChatViewModel(
                 chatRepository.updateConversationTitle(conversationId, generateTitle(firstMsg.content))
             }
         }
-        _state.value = _state.value.copy(isStreaming = false)
+        _state.value = _state.value.copy(isStreaming = false, assistantActivity = null)
         loadConversations()
         screenModelScope.launch {
             conversationMemoryService.summarizeIfNeeded(
@@ -436,7 +464,7 @@ class AIChatViewModel(
         val messages = _state.value.messages.map {
             if (it.isLoading) it.copy(isLoading = false) else it
         }
-        _state.value = _state.value.copy(messages = messages, isStreaming = false)
+        _state.value = _state.value.copy(messages = messages, isStreaming = false, assistantActivity = null)
 
         val convId = _state.value.currentConversationId ?: return
         val lastAssistant = messages.lastOrNull { it.type == ChatItemType.Answer }
@@ -485,7 +513,8 @@ class AIChatViewModel(
                 )
                 _state.value = _state.value.copy(
                     messages = _state.value.messages + assistantMsg,
-                    isStreaming = true
+                    isStreaming = true,
+                    assistantActivity = AssistantActivity.Thinking
                 )
 
                 shouldStopStream = false
@@ -510,7 +539,7 @@ class AIChatViewModel(
                             if (chunk.isDone) {
                                 streamCompleted = true
                                 chatRepository.insertMessage(convId, assistantMsg.content, ChatItemType.Answer)
-                                _state.value = _state.value.copy(isStreaming = false)
+                                _state.value = _state.value.copy(isStreaming = false, assistantActivity = null)
                                 loadConversations()
                             } else {
                                 assistantMsg = assistantMsg.copy(
@@ -526,7 +555,7 @@ class AIChatViewModel(
                             isLoading = false
                         )
                         updateMessageInState(assistantMsg)
-                        _state.value = _state.value.copy(isStreaming = false)
+                        _state.value = _state.value.copy(isStreaming = false, assistantActivity = null)
                     }
                 }
             }

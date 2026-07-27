@@ -78,6 +78,7 @@ import ai.fatai.feature.user.User
 import ai.fatai.feature.user.UserRepository
 import ai.fatai.repo.ApiKeyRepository
 import ai.fatai.viewmodel.AIChatViewModel
+import ai.fatai.viewmodel.AssistantActivity
 import fatai.composeapp.generated.resources.Res
 import fatai.composeapp.generated.resources.*
 import org.jetbrains.compose.resources.stringResource
@@ -226,6 +227,7 @@ class AIChatScreen {
                             messages = state.messages,
                             messageAttachments = state.messageAttachments,
                             isStreaming = state.isStreaming,
+                            assistantActivity = state.assistantActivity,
                             modifier = Modifier.weight(1f)
                         )
                         HorizontalDivider()
@@ -588,6 +590,7 @@ private fun ChatMessagesArea(
     messages: List<ai.fatai.repo.ChatItem>,
     messageAttachments: Map<String, List<FileAsset>>,
     isStreaming: Boolean,
+    assistantActivity: AssistantActivity?,
     modifier: Modifier = Modifier
 ) {
     val listState = rememberLazyListState()
@@ -610,6 +613,7 @@ private fun ChatMessagesArea(
                 ChatBubble(
                     msg = msg,
                     showThinking = isStreaming && msg.id == messages.lastOrNull()?.id,
+                    assistantActivity = assistantActivity,
                     compactLayout = compactLayout,
                     attachments = messageAttachments[msg.id].orEmpty()
                 )
@@ -623,6 +627,7 @@ private fun ChatMessagesArea(
 private fun ChatBubble(
     msg: ai.fatai.repo.ChatItem,
     showThinking: Boolean,
+    assistantActivity: AssistantActivity?,
     compactLayout: Boolean,
     attachments: List<FileAsset>
 ) {
@@ -698,7 +703,7 @@ private fun ChatBubble(
                 }
                 if (msg.isLoading || (!isQuestion && showThinking)) {
                     Spacer(Modifier.height(4.dp))
-                    ThinkingIndicator()
+                    ActivityIndicator(assistantActivity)
                 }
             }
         }
@@ -755,7 +760,7 @@ private fun MessageAttachments(attachments: List<FileAsset>) {
 }
 
 @Composable
-private fun ThinkingIndicator() {
+private fun ActivityIndicator(activity: AssistantActivity?) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         CircularProgressIndicator(
             modifier = Modifier.size(12.dp),
@@ -764,7 +769,7 @@ private fun ThinkingIndicator() {
         )
         Spacer(Modifier.width(7.dp))
         Text(
-            stringResource(Res.string.thinking),
+            stringResource(if (activity == AssistantActivity.Searching) Res.string.searching else Res.string.thinking),
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )

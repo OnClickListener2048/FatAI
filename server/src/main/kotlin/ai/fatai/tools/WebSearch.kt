@@ -2,17 +2,14 @@ package ai.fatai.tools
 
 import io.ktor.client.HttpClient
 import io.ktor.client.request.get
+import io.ktor.client.request.header
 import io.ktor.client.request.parameter
 import io.ktor.client.statement.bodyAsText
+import io.ktor.http.HttpHeaders
 import io.ktor.http.isSuccess
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonArray
-import kotlinx.serialization.json.JsonElement
-import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.contentOrNull
-import kotlinx.serialization.json.jsonObject
-import kotlinx.serialization.json.jsonPrimitive
+import java.net.URLDecoder
+import java.nio.charset.StandardCharsets
 
 @Serializable
 data class WebSearchRequest(
@@ -70,67 +67,116 @@ class WebSearchService(private val provider: WebSearchProvider) {
 }
 
 /**
- * Keyless development provider. Swap this implementation for Tavily, Bing, or SerpAPI in
- * production; route and client contracts stay unchanged.
+ * Keyless development provider backed by DuckDuckGo's HTML results page. The Instant Answer API
+ * is not a general web-search API and frequently has no useful result for current-event queries.
+ * Swap this implementation for Tavily, Bing, Brave, or SerpAPI in production; route and client
+ * contracts stay unchanged.
  */
 class DuckDuckGoSearchProvider(private val client: HttpClient) : WebSearchProvider {
-    private val json = Json { ignoreUnknownKeys = true }
-
     override suspend fun search(query: String, maxResults: Int): List<WebSearchResult> {
-        val response = client.get("https://api.duckduckgo.com/") {
-            parameter("q", query)
-            parameter("format", "json")
-            parameter("no_html", "1")
-            parameter("skip_disambig", "1")
+        val response = client.get(SEARCH_URL) {
+            parameter("q", queryForProvider(query))
+            header(HttpHeaders.UserAgent, USER_AGENT)
+            header(HttpHeaders.Accept, "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+            header(HttpHeaders.AcceptLanguage, "en-US,en;q=0.9,zh-CN;q=0.8")
         }
         if (!response.status.isSuccess()) {
             throw WebSearchUnavailableException("Search provider returned ${response.status.value}.")
         }
 
-        val payload = try {
-            json.parseToJsonElement(response.bodyAsText()).jsonObject
-        } catch (_: Exception) {
-            throw WebSearchUnavailableException("Search provider returned an invalid response.")
-        }
-
-        return buildList {
-            payload.toAbstractResult()?.let(::add)
-            payload["RelatedTopics"]?.collectTopicResults(this)
-        }.distinctBy(WebSearchResult::url).take(maxResults)
+        return parseResults(response.bodyAsText())
+            .let { results -> if (isWeatherQuery(query)) results.sortedBy { !it.url.contains(TIME_AND_DATE_HOST) } else results }
+            .distinctBy(WebSearchResult::url)
+            .take(maxResults)
     }
 
-    private fun JsonObject.toAbstractResult(): WebSearchResult? {
-        val url = string("AbstractURL") ?: return null
-        val title = string("Heading") ?: url
-        val snippet = string("AbstractText").orEmpty()
-        return WebSearchResult(title, snippet, url, SOURCE)
-    }
+    /**
+     * DuckDuckGo's no-JavaScript endpoint has a stable, small result markup. This deliberately
+     * extracts only its title, redirect URL, and snippet instead of treating remote HTML as a
+     * general-purpose document.
+     */
+    private fun parseResults(html: String): List<WebSearchResult> {
+        val titleMatches = resultTitleRegex.findAll(html).toList()
+        return titleMatches.mapIndexedNotNull { index, titleMatch ->
+            val nextResultStart = titleMatches.getOrNull(index + 1)?.range?.first ?: html.length
+            val resultTail = html.substring(titleMatch.range.last + 1, nextResultStart)
+            val url = destinationUrl(titleMatch.groupValues[1]) ?: return@mapIndexedNotNull null
+            val title = plainText(titleMatch.groupValues[2]).ifBlank { return@mapIndexedNotNull null }
+            val snippet = resultSnippetRegex.find(resultTail)
+                ?.groupValues
+                ?.get(1)
+                ?.let(::plainText)
+                .orEmpty()
 
-    private fun JsonElement.collectTopicResults(target: MutableList<WebSearchResult>) {
-        when (this) {
-            is JsonArray -> forEach { it.collectTopicResults(target) }
-            is JsonObject -> {
-                val url = string("FirstURL")
-                val text = string("Text")
-                if (url != null && text != null) {
-                    target += WebSearchResult(
-                        title = text.substringBefore(" - "),
-                        snippet = text,
-                        url = url,
-                        source = SOURCE
-                    )
-                }
-                this["Topics"]?.collectTopicResults(target)
-            }
-            else -> Unit
+            WebSearchResult(
+                title = title,
+                snippet = snippet,
+                url = url,
+                source = if (url.contains(TIME_AND_DATE_HOST)) "timeanddate" else SOURCE
+            )
         }
     }
 
-    private fun JsonObject.string(key: String): String? =
-        this[key]?.jsonPrimitive?.contentOrNull?.takeIf(String::isNotBlank)
+    private fun queryForProvider(query: String): String =
+        if (isWeatherQuery(query)) "$query timeanddate" else query
+
+    private fun isWeatherQuery(query: String): Boolean = weatherQueryRegex.containsMatchIn(query)
+
+    private fun destinationUrl(rawHref: String): String? {
+        val href = htmlDecode(rawHref).let { if (it.startsWith("//")) "https:$it" else it }
+        val encodedDestination = href.substringAfter('?', "")
+            .split('&')
+            .firstOrNull { it.substringBefore('=') == "uddg" }
+            ?.substringAfter('=', "")
+            .orEmpty()
+
+        return if (encodedDestination.isNotBlank()) {
+            runCatching { URLDecoder.decode(encodedDestination, StandardCharsets.UTF_8.toString()) }
+                .getOrNull()
+                ?.takeIf(String::isNotBlank)
+        } else {
+            href.takeIf { it.startsWith("http://") || it.startsWith("https://") }
+        }
+    }
+
+    private fun plainText(html: String): String =
+        htmlDecode(html.replace(tagRegex, " ")).replace(whitespaceRegex, " ").trim()
+
+    private fun htmlDecode(value: String): String = value
+        .replace("&amp;", "&", ignoreCase = true)
+        .replace("&quot;", "\"")
+        .replace("&#39;", "'")
+        .replace("&apos;", "'")
+        .replace("&lt;", "<", ignoreCase = true)
+        .replace("&gt;", ">", ignoreCase = true)
+        .replace(numericEntityRegex) { entity ->
+            val encoded = entity.groupValues[1]
+            val codePoint = encoded.removePrefix("x").removePrefix("X").toIntOrNull(
+                if (encoded.startsWith("x", ignoreCase = true)) 16 else 10
+            )
+            codePoint?.takeIf(Character::isValidCodePoint)
+                ?.let { String(Character.toChars(it)) }
+                ?: entity.value
+        }
 
     private companion object {
         const val SOURCE = "duckduckgo"
+        const val TIME_AND_DATE_HOST = "timeanddate.com"
+        const val SEARCH_URL = "https://html.duckduckgo.com/html/"
+        const val USER_AGENT = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
+
+        val resultTitleRegex = Regex(
+            """<a\b(?=[^>]*\bclass\s*=\s*["'][^"']*\bresult__a\b[^"']*["'])[^>]*\bhref\s*=\s*["']([^"']+)["'][^>]*>(.*?)</a>""",
+            setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)
+        )
+        val resultSnippetRegex = Regex(
+            """<a\b(?=[^>]*\bclass\s*=\s*["'][^"']*\bresult__snippet\b[^"']*["'])[^>]*>(.*?)</a>""",
+            setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)
+        )
+        val tagRegex = Regex("""<[^>]+>""")
+        val whitespaceRegex = Regex("""\s+""")
+        val numericEntityRegex = Regex("""&#(x[0-9a-fA-F]+|\d+);""", RegexOption.IGNORE_CASE)
+        val weatherQueryRegex = Regex("""(?i)\b(weather|forecast|temperature|rain|snow)\b|天气|气温|温度|降雨|下雨|下雪|预报""")
     }
 }
 

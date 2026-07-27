@@ -65,6 +65,8 @@ private val FAT_AI_SYSTEM_PROMPT = """
       available, use it for fresh external information and clearly ground the answer in its result.
     - Ask one focused clarifying question only when the missing detail is necessary to give a
       useful answer; otherwise state the assumption you made and proceed.
+    - For weather, local events, and other location-dependent questions, ask for the location
+      when it is not available; do not guess one.
     - For time-sensitive facts, explain that the information may need verification when you cannot
       verify it from the available conversation.
 
