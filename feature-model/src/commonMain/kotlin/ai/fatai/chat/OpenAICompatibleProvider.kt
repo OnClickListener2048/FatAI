@@ -58,7 +58,10 @@ class OpenAICompatibleProvider(
             temperature = config.temperature,
             top_p = config.topP,
             tools = toolPayload.value as? JsonArray,
-            tool_choice = if (tools.isEmpty()) null else "auto"
+            tool_choice = if (tools.isEmpty()) null else "auto",
+            // DeepSeek enables its reasoning stream by default. Disable it so the
+            // response starts with ordinary `content` chunks.
+            thinking = if (config.providerType == ProviderType.DeepSeek) OpenAIThinking(type = "disabled") else null
         )
 
         val response = client.post(chatCompletionsUrl(config.baseUrl)) {
@@ -107,7 +110,10 @@ class OpenAICompatibleProvider(
                 try {
                     val response = json.decodeFromString<OpenAIStreamResponse>(data)
                     val delta = response.choices?.firstOrNull()?.delta
-                    val content = delta?.content ?: ""
+                    // Reasoning-capable OpenAI-compatible models may stream their first
+                    // tokens as `reasoning_content`, `reasoning`, or `text` instead of
+                    // `content`. Forward them immediately so the UI can update per chunk.
+                    val content = delta?.streamContent().orEmpty()
                     delta?.tool_calls.orEmpty().forEach { toolCall ->
                         val accumulated = streamedToolCalls.getOrPut(toolCall.index) { StreamedToolCall() }
                         toolCall.id?.let { accumulated.id = it }
@@ -169,8 +175,10 @@ class OpenAICompatibleProvider(
     val temperature: Float = 0.7f,
     val top_p: Float = 1.0f,
     val tools: JsonArray? = null,
-    val tool_choice: String? = null
+    val tool_choice: String? = null,
+    val thinking: OpenAIThinking? = null
 )
+@Serializable data class OpenAIThinking(val type: String)
 @Serializable data class OpenAIMessage(
     val role: String,
     val content: String? = null,
@@ -181,6 +189,9 @@ class OpenAICompatibleProvider(
 @Serializable data class OpenAIStreamChoice(val delta: OpenAIDelta? = null, val finish_reason: String? = null, val index: Int? = null)
 @Serializable data class OpenAIDelta(
     val content: String? = null,
+    val reasoning_content: String? = null,
+    val reasoning: String? = null,
+    val text: String? = null,
     val role: String? = null,
     val tool_calls: List<OpenAIStreamToolCall>? = null
 )
@@ -190,6 +201,13 @@ class OpenAICompatibleProvider(
     val function: OpenAIToolFunction? = null
 )
 @Serializable data class OpenAIToolFunction(val name: String? = null, val arguments: String? = null)
+
+private fun OpenAIDelta.streamContent(): String? = listOf(
+    content,
+    reasoning_content,
+    reasoning,
+    text
+).firstOrNull { !it.isNullOrEmpty() }
 @Serializable data class OpenAIResponse(val choices: List<OpenAIResponseChoice>? = null, val id: String? = null, val model: String? = null, val usage: OpenAIUsage? = null)
 @Serializable data class OpenAIResponseChoice(val message: OpenAIMessage? = null, val finish_reason: String? = null)
 @Serializable data class OpenAIResponseToolCall(

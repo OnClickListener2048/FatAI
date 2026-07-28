@@ -4,6 +4,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -174,7 +175,8 @@ class AIChatViewModel(
                 ProviderConfig(
                     apiKey = key.apiKey,
                     baseUrl = key.baseUrl.ifBlank { key.providerType.defaultBaseUrl },
-                    model = key.model.ifBlank { key.providerType.defaultModel }
+                    model = key.model.ifBlank { key.providerType.defaultModel },
+                    providerType = key.providerType
                 )
             }
         )
@@ -191,7 +193,8 @@ class AIChatViewModel(
             activeConfig = ProviderConfig(
                 apiKey = keyInfo.apiKey,
                 baseUrl = keyInfo.baseUrl.ifBlank { keyInfo.providerType.defaultBaseUrl },
-                model = keyInfo.model.ifBlank { keyInfo.providerType.defaultModel }
+                model = keyInfo.model.ifBlank { keyInfo.providerType.defaultModel },
+                providerType = keyInfo.providerType
             )
         )
     }
@@ -414,16 +417,34 @@ class AIChatViewModel(
         onContent: (String) -> Unit
     ): List<ai.fatai.feature.tools.ProviderToolCall> {
         var toolCalls = emptyList<ai.fatai.feature.tools.ProviderToolCall>()
+        var lastRenderedAt = 0L
         modelGateway.stream(
             messages = prompt,
             config = config,
             tools = if (includeTools) toolRegistry.definitions() else emptyList()
         ).collect { chunk ->
             if (shouldStopStream) return@collect
-            if (chunk.content.isNotEmpty()) onContent(chunk.content)
+            if (chunk.content.isNotEmpty()) {
+                // A fast provider (or a buffered transport) can make several chunks available
+                // in one main-thread turn. StateFlow keeps the latest value in that case, so
+                // Compose gets no opportunity to draw the intermediate text. Limit commits to
+                // the display frame rate and yield between them.
+                lastRenderedAt = awaitNextStreamFrame(lastRenderedAt)
+                onContent(chunk.content)
+            }
             if (chunk.isDone) toolCalls = chunk.toolCalls
         }
         return toolCalls
+    }
+
+    @OptIn(kotlin.time.ExperimentalTime::class)
+    private suspend fun awaitNextStreamFrame(lastRenderedAt: Long): Long {
+        if (lastRenderedAt != 0L) {
+            val elapsed = Clock.System.now().toEpochMilliseconds() - lastRenderedAt
+            val remaining = STREAM_RENDER_INTERVAL_MILLIS - elapsed
+            if (remaining > 0) delay(remaining)
+        }
+        return Clock.System.now().toEpochMilliseconds()
     }
 
     private fun formatToolResults(executions: List<ai.fatai.feature.tools.ToolExecution>): String = buildString {
@@ -558,6 +579,7 @@ class AIChatViewModel(
                 streamJob = screenModelScope.launch {
                     try {
                         var streamCompleted = false
+                        var lastRenderedAt = 0L
                         val history = _state.value.messages
                             .filter { !it.isLoading && !it.content.startsWith("Error:") }
                             .map {
@@ -573,17 +595,19 @@ class AIChatViewModel(
                 )
                 modelGateway.stream(prompt, config).collect { chunk ->
                             if (shouldStopStream || streamCompleted) return@collect
-                            if (chunk.isDone) {
-                                streamCompleted = true
-                                chatRepository.insertMessage(convId, assistantMsg.content, ChatItemType.Answer)
-                                _state.value = _state.value.copy(isStreaming = false, assistantActivity = null)
-                                loadConversations()
-                            } else {
+                            if (chunk.content.isNotEmpty()) {
+                                lastRenderedAt = awaitNextStreamFrame(lastRenderedAt)
                                 assistantMsg = assistantMsg.copy(
                                     content = assistantMsg.content + chunk.content,
                                     isLoading = false
                                 )
                                 updateMessageInState(assistantMsg)
+                            }
+                            if (chunk.isDone) {
+                                streamCompleted = true
+                                chatRepository.insertMessage(convId, assistantMsg.content, ChatItemType.Answer)
+                                _state.value = _state.value.copy(isStreaming = false, assistantActivity = null)
+                                loadConversations()
                             }
                         }
                     } catch (e: Exception) {
@@ -643,6 +667,10 @@ class AIChatViewModel(
                 if (it.id == updatedMsg.id) updatedMsg else it
             }
         )
+    }
+
+    private companion object {
+        const val STREAM_RENDER_INTERVAL_MILLIS = 16L
     }
 
     private fun generateTitle(firstMessage: String): String {

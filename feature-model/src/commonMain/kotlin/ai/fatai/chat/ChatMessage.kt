@@ -28,6 +28,7 @@ data class ProviderConfig(
     val apiKey: String,
     val baseUrl: String,
     val model: String,
+    val providerType: ProviderType = ProviderType.OpenAI,
     val maxTokens: Int = 4096,
     val temperature: Float = 0.7f,
     val topP: Float = 1.0f,

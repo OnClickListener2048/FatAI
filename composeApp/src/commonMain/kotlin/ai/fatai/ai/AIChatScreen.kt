@@ -622,15 +622,16 @@ private fun ChatMessagesArea(
         }
     }
 
-    LaunchedEffect(messages.lastOrNull()?.id, messages.lastOrNull()?.content) {
+    LaunchedEffect(messages.lastOrNull()?.id, messages.lastOrNull()?.content, isStreaming) {
         if (!hasInitializedPosition) {
             hasInitializedPosition = true
             if (!canRestorePosition && messages.isNotEmpty()) {
                 listState.scrollToItem(messages.lastIndex)
             }
         } else if (
+            !isStreaming &&
             messages.isNotEmpty() &&
-            listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1 >= messages.lastIndex - 1
+            (listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1) >= messages.lastIndex - 1
         ) {
             listState.animateScrollToItem(messages.lastIndex)
         }
@@ -711,7 +712,10 @@ private fun ChatBubble(
                 Column(modifier = Modifier.padding(horizontal = bubblePaddingHorizontal, vertical = bubblePaddingVertical)) {
                 SelectionContainer {
                     when (msg.contentType) {
-                        MessageContentType.Markdown -> MarkdownMessage(msg.content, compactLayout = compactLayout)
+                        MessageContentType.Markdown -> MarkdownMessage(
+                            msg.content,
+                            compactLayout = compactLayout
+                        )
                         else -> Text(
                             msg.content,
                             style = MaterialTheme.typography.bodyMedium.copy(fontSize = textSize, lineHeight = lineHeight)
@@ -736,7 +740,9 @@ private fun ChatBubble(
                         }
                     }
                 }
-                if (msg.isLoading || (!isQuestion && showThinking)) {
+                // Show "Thinking" only until the first stream chunk arrives. Afterwards the
+                // changing response text is the progress indicator.
+                if (msg.isLoading || (!isQuestion && showThinking && msg.content.isBlank())) {
                     Spacer(Modifier.height(4.dp))
                     ActivityIndicator(assistantActivity)
                 }
