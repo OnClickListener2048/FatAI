@@ -368,8 +368,8 @@ class AIChatViewModel(
                 val toolCalls = collectModelResponse(
                     prompt = prompt,
                     config = config,
-                    includeTools = true
-                ) { content ->
+                    includeTools = true,
+                    onContent = { content ->
                     if (content.isNotEmpty()) {
                         assistantMsg = assistantMsg.copy(
                             content = assistantMsg.content + content,
@@ -378,7 +378,17 @@ class AIChatViewModel(
                         updateMessageInState(assistantMsg)
                         _markdownStreamChunks.emit(MarkdownStreamChunk(assistantMsg.id, content))
                     }
-                }
+                    },
+                    onReasoning = { reasoningContent ->
+                    if (reasoningContent.isNotEmpty()) {
+                        assistantMsg = assistantMsg.copy(
+                            reasoningContent = assistantMsg.reasoningContent + reasoningContent,
+                            isLoading = false
+                        )
+                        updateMessageInState(assistantMsg)
+                    }
+                    }
+                )
                 if (toolCalls.isNotEmpty() && !shouldStopStream) {
                     _state.value = _state.value.copy(assistantActivity = toolCalls.activity())
                     val toolResults = toolCalls.map { call ->
@@ -391,8 +401,8 @@ class AIChatViewModel(
                             content = formatToolResults(toolResults)
                         ),
                         config = config,
-                        includeTools = false
-                    ) { content ->
+                        includeTools = false,
+                        onContent = { content ->
                         if (content.isNotEmpty()) {
                             assistantMsg = assistantMsg.copy(
                                 content = assistantMsg.content + content,
@@ -401,7 +411,17 @@ class AIChatViewModel(
                             updateMessageInState(assistantMsg)
                             _markdownStreamChunks.emit(MarkdownStreamChunk(assistantMsg.id, content))
                         }
-                    }
+                        },
+                        onReasoning = { reasoningContent ->
+                        if (reasoningContent.isNotEmpty()) {
+                            assistantMsg = assistantMsg.copy(
+                                reasoningContent = assistantMsg.reasoningContent + reasoningContent,
+                                isLoading = false
+                            )
+                            updateMessageInState(assistantMsg)
+                        }
+                        }
+                    )
                     assistantMsg = assistantMsg.withToolSources(toolResults)
                     updateMessageInState(assistantMsg)
                 }
@@ -423,7 +443,8 @@ class AIChatViewModel(
         prompt: List<ChatMessage>,
         config: ProviderConfig,
         includeTools: Boolean,
-        onContent: suspend (String) -> Unit
+        onContent: suspend (String) -> Unit,
+        onReasoning: suspend (String) -> Unit = {}
     ): List<ai.fatai.feature.tools.ProviderToolCall> {
         var toolCalls = emptyList<ai.fatai.feature.tools.ProviderToolCall>()
         var lastRenderedAt = 0L
@@ -433,6 +454,10 @@ class AIChatViewModel(
             tools = if (includeTools) toolRegistry.definitions() else emptyList()
         ).collect { chunk ->
             if (shouldStopStream) return@collect
+            if (chunk.reasoningContent.isNotEmpty()) {
+                lastRenderedAt = awaitNextStreamFrame(lastRenderedAt)
+                onReasoning(chunk.reasoningContent)
+            }
             if (chunk.content.isNotEmpty()) {
                 // A fast provider (or a buffered transport) can make several chunks available
                 // in one main-thread turn. StateFlow keeps the latest value in that case, so
@@ -602,8 +627,16 @@ class AIChatViewModel(
                         history = history
                     )
                 )
-                modelGateway.stream(prompt, config).collect { chunk ->
+                        modelGateway.stream(prompt, config).collect { chunk ->
                             if (shouldStopStream || streamCompleted) return@collect
+                            if (chunk.reasoningContent.isNotEmpty()) {
+                                lastRenderedAt = awaitNextStreamFrame(lastRenderedAt)
+                                assistantMsg = assistantMsg.copy(
+                                    reasoningContent = assistantMsg.reasoningContent + chunk.reasoningContent,
+                                    isLoading = false
+                                )
+                                updateMessageInState(assistantMsg)
+                            }
                             if (chunk.content.isNotEmpty()) {
                                 lastRenderedAt = awaitNextStreamFrame(lastRenderedAt)
                                 assistantMsg = assistantMsg.copy(

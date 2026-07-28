@@ -11,6 +11,7 @@ data class ChatMessage(
 
 data class ChatStreamChunk(
     val content: String,
+    val reasoningContent: String = "",
     val isDone: Boolean = false,
     val finishReason: String? = null,
     val usage: ChatUsage? = null,

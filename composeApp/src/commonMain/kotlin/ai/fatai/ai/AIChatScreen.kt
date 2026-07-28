@@ -869,16 +869,31 @@ private fun ChatBubble(
                     )
                 ) {
                     when (msg.contentType) {
-                        MessageContentType.Markdown -> MarkdownMessage(
-                            msg.content,
-                            messageId = msg.id,
-                            chunkFlow = remember(msg.id, markdownStreamChunks) {
-                                markdownStreamChunks
-                                    .filter { it.messageId == msg.id }
-                                    .map { it.content }
-                            },
-                            compactLayout = compactLayout
-                        )
+                        MessageContentType.Markdown -> {
+                            if (msg.content.isNotBlank()) {
+                                MarkdownMessage(
+                                    msg.content,
+                                    messageId = msg.id,
+                                    chunkFlow = remember(msg.id, markdownStreamChunks) {
+                                        markdownStreamChunks
+                                            .filter { it.messageId == msg.id }
+                                            .map { it.content }
+                                    },
+                                    compactLayout = compactLayout
+                                )
+                            } else if (msg.reasoningContent.isNotBlank()) {
+                                SelectionContainer {
+                                    Text(
+                                        msg.reasoningContent,
+                                        style = MaterialTheme.typography.bodyMedium.copy(
+                                            fontSize = textSize,
+                                            lineHeight = lineHeight
+                                        ),
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                        }
 
                         else -> SelectionContainer {
                             Text(

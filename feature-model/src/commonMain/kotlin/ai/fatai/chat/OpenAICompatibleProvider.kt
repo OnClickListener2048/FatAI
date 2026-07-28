@@ -58,10 +58,7 @@ class OpenAICompatibleProvider(
             temperature = config.temperature,
             top_p = config.topP,
             tools = toolPayload.value as? JsonArray,
-            tool_choice = if (tools.isEmpty()) null else "auto",
-            // DeepSeek enables its reasoning stream by default. Disable it so the
-            // response starts with ordinary `content` chunks.
-            thinking = if (config.providerType == ProviderType.DeepSeek) OpenAIThinking(type = "disabled") else null
+            tool_choice = if (tools.isEmpty()) null else "auto"
         )
 
         val response = client.post(chatCompletionsUrl(config.baseUrl)) {
@@ -110,10 +107,10 @@ class OpenAICompatibleProvider(
                 try {
                     val response = json.decodeFromString<OpenAIStreamResponse>(data)
                     val delta = response.choices?.firstOrNull()?.delta
-                    // Reasoning-capable OpenAI-compatible models may stream their first
-                    // tokens as `reasoning_content`, `reasoning`, or `text` instead of
-                    // `content`. Forward them immediately so the UI can update per chunk.
+                    // Reasoning-capable providers stream thinking tokens separately from the
+                    // final answer. Keep both channels distinct for the chat renderer.
                     val content = delta?.streamContent().orEmpty()
+                    val reasoningContent = delta?.streamReasoningContent().orEmpty()
                     delta?.tool_calls.orEmpty().forEach { toolCall ->
                         val accumulated = streamedToolCalls.getOrPut(toolCall.index) { StreamedToolCall() }
                         toolCall.id?.let { accumulated.id = it }
@@ -124,6 +121,7 @@ class OpenAICompatibleProvider(
                     if (finishReason != null) streamCompleted = true
                     emit(ChatStreamChunk(
                         content = content,
+                        reasoningContent = reasoningContent,
                         isDone = finishReason != null,
                         finishReason = finishReason,
                         toolCalls = if (finishReason == "tool_calls") streamedToolCalls.toProviderCalls() else emptyList()
@@ -204,9 +202,12 @@ class OpenAICompatibleProvider(
 
 private fun OpenAIDelta.streamContent(): String? = listOf(
     content,
-    reasoning_content,
-    reasoning,
     text
+).firstOrNull { !it.isNullOrEmpty() }
+
+private fun OpenAIDelta.streamReasoningContent(): String? = listOf(
+    reasoning_content,
+    reasoning
 ).firstOrNull { !it.isNullOrEmpty() }
 @Serializable data class OpenAIResponse(val choices: List<OpenAIResponseChoice>? = null, val id: String? = null, val model: String? = null, val usage: OpenAIUsage? = null)
 @Serializable data class OpenAIResponseChoice(val message: OpenAIMessage? = null, val finish_reason: String? = null)

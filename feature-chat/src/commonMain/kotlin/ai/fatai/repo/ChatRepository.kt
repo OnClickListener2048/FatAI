@@ -29,6 +29,7 @@ data class ChatItem(
     val type: ChatItemType,
     val contentType: MessageContentType,
     val createdAt: Long,
+    val reasoningContent: String = "",
     val isLoading: Boolean = false
 )
 
