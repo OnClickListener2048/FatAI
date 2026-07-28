@@ -1,5 +1,17 @@
 package ai.fatai.ai
 
+import ai.fatai.bean.ChatItemType
+import ai.fatai.bean.MessageContentType
+import ai.fatai.feature.files.FileAsset
+import ai.fatai.feature.user.User
+import ai.fatai.feature.user.UserRepository
+import ai.fatai.feature.workspace.Workspace
+import ai.fatai.repo.ApiKeyRepository
+import ai.fatai.repo.Conversation
+import ai.fatai.viewmodel.AIChatViewModel
+import ai.fatai.viewmodel.AssistantActivity
+import ai.fatai.viewmodel.ChatScrollPosition
+import ai.fatai.viewmodel.MarkdownStreamChunk
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -22,7 +34,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
@@ -54,7 +65,6 @@ import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -70,41 +80,70 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import kotlinx.coroutines.launch
-import ai.fatai.bean.ChatItemType
-import ai.fatai.bean.MessageContentType
-import ai.fatai.repo.Conversation
-import ai.fatai.feature.workspace.Workspace
-import ai.fatai.feature.files.FileAsset
-import ai.fatai.feature.user.User
-import ai.fatai.feature.user.UserRepository
-import ai.fatai.repo.ApiKeyRepository
-import ai.fatai.viewmodel.AIChatViewModel
-import ai.fatai.viewmodel.AssistantActivity
-import ai.fatai.viewmodel.ChatScrollPosition
-import fatai.composeapp.generated.resources.Res
-import fatai.composeapp.generated.resources.*
-import org.jetbrains.compose.resources.stringResource
-import org.koin.compose.koinInject
-import io.github.vinceglb.filekit.mimeType
-import io.github.vinceglb.filekit.name
-import io.github.vinceglb.filekit.size
-import io.github.vinceglb.filekit.dialogs.FileKitType
-import io.github.vinceglb.filekit.dialogs.compose.rememberFilePickerLauncher
-import io.github.vinceglb.filekit.PlatformFile
-import io.github.vinceglb.filekit.coil.AsyncImage as FileKitAsyncImage
 import compose.icons.FeatherIcons
 import compose.icons.feathericons.ChevronDown
 import compose.icons.feathericons.Copy
 import compose.icons.feathericons.Folder
 import compose.icons.feathericons.Menu
 import compose.icons.feathericons.MoreVertical
+import compose.icons.feathericons.Paperclip
 import compose.icons.feathericons.Plus
 import compose.icons.feathericons.RefreshCw
 import compose.icons.feathericons.Send
 import compose.icons.feathericons.Settings
 import compose.icons.feathericons.Square
-import compose.icons.feathericons.Paperclip
+import fatai.composeapp.generated.resources.Res
+import fatai.composeapp.generated.resources.add_api_key
+import fatai.composeapp.generated.resources.add_api_key_description
+import fatai.composeapp.generated.resources.add_api_key_in_settings
+import fatai.composeapp.generated.resources.add_key
+import fatai.composeapp.generated.resources.archive
+import fatai.composeapp.generated.resources.attach_file
+import fatai.composeapp.generated.resources.cancel
+import fatai.composeapp.generated.resources.checking_weather
+import fatai.composeapp.generated.resources.continue_generation
+import fatai.composeapp.generated.resources.conversation_actions
+import fatai.composeapp.generated.resources.copy_message
+import fatai.composeapp.generated.resources.create
+import fatai.composeapp.generated.resources.create_workspace
+import fatai.composeapp.generated.resources.delete
+import fatai.composeapp.generated.resources.delete_conversation_confirmation
+import fatai.composeapp.generated.resources.message_fatai
+import fatai.composeapp.generated.resources.new_chat
+import fatai.composeapp.generated.resources.new_conversation
+import fatai.composeapp.generated.resources.new_workspace
+import fatai.composeapp.generated.resources.open_conversations
+import fatai.composeapp.generated.resources.personal
+import fatai.composeapp.generated.resources.pin
+import fatai.composeapp.generated.resources.regenerate
+import fatai.composeapp.generated.resources.search_chats
+import fatai.composeapp.generated.resources.searching
+import fatai.composeapp.generated.resources.send
+import fatai.composeapp.generated.resources.settings
+import fatai.composeapp.generated.resources.stop
+import fatai.composeapp.generated.resources.switch_workspace
+import fatai.composeapp.generated.resources.thinking
+import fatai.composeapp.generated.resources.unpin
+import fatai.composeapp.generated.resources.user_account
+import fatai.composeapp.generated.resources.using_tool
+import fatai.composeapp.generated.resources.welcome_provider
+import fatai.composeapp.generated.resources.welcome_start_body
+import fatai.composeapp.generated.resources.welcome_start_title
+import fatai.composeapp.generated.resources.welcome_title
+import fatai.composeapp.generated.resources.workspace_instruction
+import fatai.composeapp.generated.resources.workspace_name
+import io.github.vinceglb.filekit.PlatformFile
+import io.github.vinceglb.filekit.dialogs.FileKitType
+import io.github.vinceglb.filekit.dialogs.compose.rememberFilePickerLauncher
+import io.github.vinceglb.filekit.mimeType
+import io.github.vinceglb.filekit.name
+import io.github.vinceglb.filekit.size
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.map
+import org.jetbrains.compose.resources.stringResource
+import org.koin.compose.koinInject
+import io.github.vinceglb.filekit.coil.AsyncImage as FileKitAsyncImage
 
 class AIChatScreen {
 
@@ -127,7 +166,21 @@ class AIChatScreen {
         val snackbarHostState = remember { SnackbarHostState() }
         val attachFileTitle = stringResource(Res.string.attach_file)
         val filePicker = rememberFilePickerLauncher(
-            type = FileKitType.File(listOf("pdf", "doc", "docx", "xls", "xlsx", "md", "txt", "png", "jpg", "jpeg", "webp")),
+            type = FileKitType.File(
+                listOf(
+                    "pdf",
+                    "doc",
+                    "docx",
+                    "xls",
+                    "xlsx",
+                    "md",
+                    "txt",
+                    "png",
+                    "jpg",
+                    "jpeg",
+                    "webp"
+                )
+            ),
             title = attachFileTitle
         ) { file ->
             if (file != null) {
@@ -189,7 +242,10 @@ class AIChatScreen {
                         navigationIcon = {
                             if (showDrawerToggle) {
                                 IconButton(onClick = { scope.launch { drawerState.open() } }) {
-                                    Icon(FeatherIcons.Menu, contentDescription = stringResource(Res.string.open_conversations))
+                                    Icon(
+                                        FeatherIcons.Menu,
+                                        contentDescription = stringResource(Res.string.open_conversations)
+                                    )
                                 }
                             }
                         },
@@ -205,7 +261,10 @@ class AIChatScreen {
                                 )
                             }
                             IconButton(onClick = { viewModel.newConversation() }) {
-                                Icon(FeatherIcons.Plus, contentDescription = stringResource(Res.string.new_conversation))
+                                Icon(
+                                    FeatherIcons.Plus,
+                                    contentDescription = stringResource(Res.string.new_conversation)
+                                )
                             }
                         },
                         colors = TopAppBarDefaults.topAppBarColors(
@@ -231,6 +290,7 @@ class AIChatScreen {
                             messageAttachments = state.messageAttachments,
                             isStreaming = state.isStreaming,
                             assistantActivity = state.assistantActivity,
+                            markdownStreamChunks = viewModel.markdownStreamChunks,
                             scrollPosition = state.chatScrollPosition,
                             onScrollPositionChange = viewModel::updateChatScrollPosition,
                             modifier = Modifier.weight(1f)
@@ -321,11 +381,23 @@ private fun WelcomeScreen(onNewChat: () -> Unit, providerName: String) {
         verticalArrangement = Arrangement.Center
     ) {
         Box(
-            modifier = Modifier.size(60.dp).clip(RoundedCornerShape(18.dp)).background(MaterialTheme.colorScheme.primary),
+            modifier = Modifier.size(60.dp).clip(RoundedCornerShape(18.dp))
+                .background(MaterialTheme.colorScheme.primary),
             contentAlignment = Alignment.Center
-        ) { Text("F", color = MaterialTheme.colorScheme.onPrimary, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold) }
+        ) {
+            Text(
+                "F",
+                color = MaterialTheme.colorScheme.onPrimary,
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold
+            )
+        }
         Spacer(Modifier.height(20.dp))
-        Text(stringResource(Res.string.welcome_title), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
+        Text(
+            stringResource(Res.string.welcome_title),
+            style = MaterialTheme.typography.headlineSmall,
+            fontWeight = FontWeight.SemiBold
+        )
         Spacer(Modifier.height(8.dp))
         Text(
             stringResource(Res.string.welcome_provider, providerName),
@@ -341,9 +413,16 @@ private fun WelcomeScreen(onNewChat: () -> Unit, providerName: String) {
             Column(modifier = Modifier.padding(18.dp)) {
                 Text(stringResource(Res.string.welcome_start_title), fontWeight = FontWeight.Medium)
                 Spacer(Modifier.height(4.dp))
-                Text(stringResource(Res.string.welcome_start_body), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(
+                    stringResource(Res.string.welcome_start_body),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
                 Spacer(Modifier.height(14.dp))
-                Button(onClick = onNewChat, shape = RoundedCornerShape(10.dp)) { Text(stringResource(Res.string.new_chat)) }
+                Button(
+                    onClick = onNewChat,
+                    shape = RoundedCornerShape(10.dp)
+                ) { Text(stringResource(Res.string.new_chat)) }
             }
         }
     }
@@ -379,14 +458,37 @@ private fun ConversationSidebar(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(modifier = Modifier.size(28.dp).clip(RoundedCornerShape(8.dp)).background(MaterialTheme.colorScheme.primary), contentAlignment = Alignment.Center) { Text("F", color = MaterialTheme.colorScheme.onPrimary, fontWeight = FontWeight.Bold) }
+                Box(
+                    modifier = Modifier.size(28.dp).clip(RoundedCornerShape(8.dp))
+                        .background(MaterialTheme.colorScheme.primary),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        "F",
+                        color = MaterialTheme.colorScheme.onPrimary,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
                 Spacer(Modifier.width(9.dp))
-                Text("FatAI", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Text(
+                    "FatAI",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold
+                )
             }
-            IconButton(onClick = onSettings) { Icon(FeatherIcons.Settings, contentDescription = stringResource(Res.string.settings)) }
+            IconButton(onClick = onSettings) {
+                Icon(
+                    FeatherIcons.Settings,
+                    contentDescription = stringResource(Res.string.settings)
+                )
+            }
         }
 
-        Button(onClick = onNew, modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 12.dp), shape = RoundedCornerShape(10.dp)) {
+        Button(
+            onClick = onNew,
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 12.dp),
+            shape = RoundedCornerShape(10.dp)
+        ) {
             Icon(FeatherIcons.Plus, contentDescription = null, modifier = Modifier.size(17.dp))
             Spacer(Modifier.width(7.dp)); Text(stringResource(Res.string.new_chat))
         }
@@ -401,13 +503,27 @@ private fun ConversationSidebar(
                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Icon(FeatherIcons.Folder, contentDescription = null, modifier = Modifier.size(17.dp))
+                    Icon(
+                        FeatherIcons.Folder,
+                        contentDescription = null,
+                        modifier = Modifier.size(17.dp)
+                    )
                     Spacer(Modifier.width(8.dp))
-                    Text(activeWorkspace?.name ?: stringResource(Res.string.personal), modifier = Modifier.weight(1f), maxLines = 1)
-                    Icon(FeatherIcons.ChevronDown, contentDescription = stringResource(Res.string.switch_workspace), modifier = Modifier.size(16.dp))
+                    Text(
+                        activeWorkspace?.name ?: stringResource(Res.string.personal),
+                        modifier = Modifier.weight(1f),
+                        maxLines = 1
+                    )
+                    Icon(
+                        FeatherIcons.ChevronDown,
+                        contentDescription = stringResource(Res.string.switch_workspace),
+                        modifier = Modifier.size(16.dp)
+                    )
                 }
             }
-            DropdownMenu(expanded = workspaceMenuExpanded, onDismissRequest = { workspaceMenuExpanded = false }) {
+            DropdownMenu(
+                expanded = workspaceMenuExpanded,
+                onDismissRequest = { workspaceMenuExpanded = false }) {
                 workspaces.forEach { workspace ->
                     DropdownMenuItem(
                         text = { Text(workspace.name) },
@@ -496,7 +612,12 @@ private fun ConversationSidebar(
                                     onClick = { onToggleArchive(conv.id); showMenu = false }
                                 )
                                 DropdownMenuItem(
-                                    text = { Text(stringResource(Res.string.delete), color = MaterialTheme.colorScheme.error) },
+                                    text = {
+                                        Text(
+                                            stringResource(Res.string.delete),
+                                            color = MaterialTheme.colorScheme.error
+                                        )
+                                    },
                                     onClick = { showMenu = false; showDeleteDialog = conv.id }
                                 )
                             }
@@ -517,7 +638,8 @@ private fun ConversationSidebar(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Box(
-                    modifier = Modifier.size(36.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primary),
+                    modifier = Modifier.size(36.dp).clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.primary),
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
@@ -535,7 +657,11 @@ private fun ConversationSidebar(
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
-                Icon(FeatherIcons.Settings, contentDescription = stringResource(Res.string.settings), modifier = Modifier.size(18.dp))
+                Icon(
+                    FeatherIcons.Settings,
+                    contentDescription = stringResource(Res.string.settings),
+                    modifier = Modifier.size(18.dp)
+                )
             }
         }
 
@@ -545,12 +671,19 @@ private fun ConversationSidebar(
                 title = { Text(stringResource(Res.string.delete)) },
                 text = { Text(stringResource(Res.string.delete_conversation_confirmation)) },
                 confirmButton = {
-                    TextButton(onClick = { onDelete(showDeleteDialog!!); showDeleteDialog = null }) {
-                        Text(stringResource(Res.string.delete), color = MaterialTheme.colorScheme.error)
+                    TextButton(onClick = {
+                        onDelete(showDeleteDialog!!); showDeleteDialog = null
+                    }) {
+                        Text(
+                            stringResource(Res.string.delete),
+                            color = MaterialTheme.colorScheme.error
+                        )
                     }
                 },
                 dismissButton = {
-                    TextButton(onClick = { showDeleteDialog = null }) { Text(stringResource(Res.string.cancel)) }
+                    TextButton(onClick = {
+                        showDeleteDialog = null
+                    }) { Text(stringResource(Res.string.cancel)) }
                 }
             )
         }
@@ -579,12 +712,26 @@ private fun CreateWorkspaceDialog(
         title = { Text(stringResource(Res.string.new_workspace)) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedTextField(name, { name = it }, label = { Text(stringResource(Res.string.workspace_name)) }, singleLine = true)
-                OutlinedTextField(prompt, { prompt = it }, label = { Text(stringResource(Res.string.workspace_instruction)) }, minLines = 3)
+                OutlinedTextField(
+                    name,
+                    { name = it },
+                    label = { Text(stringResource(Res.string.workspace_name)) },
+                    singleLine = true
+                )
+                OutlinedTextField(
+                    prompt,
+                    { prompt = it },
+                    label = { Text(stringResource(Res.string.workspace_instruction)) },
+                    minLines = 3
+                )
             }
         },
         confirmButton = {
-            TextButton(onClick = { onCreate(name, prompt) }, enabled = name.isNotBlank()) { Text(stringResource(Res.string.create)) }
+            TextButton(onClick = { onCreate(name, prompt) }, enabled = name.isNotBlank()) {
+                Text(
+                    stringResource(Res.string.create)
+                )
+            }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(Res.string.cancel)) } }
     )
@@ -596,6 +743,7 @@ private fun ChatMessagesArea(
     messageAttachments: Map<String, List<FileAsset>>,
     isStreaming: Boolean,
     assistantActivity: AssistantActivity?,
+    markdownStreamChunks: kotlinx.coroutines.flow.Flow<MarkdownStreamChunk>,
     scrollPosition: ChatScrollPosition,
     onScrollPositionChange: (String, Int, Int) -> Unit,
     modifier: Modifier = Modifier
@@ -604,7 +752,8 @@ private fun ChatMessagesArea(
     val restoredIndex = scrollPosition.firstVisibleItemIndex
         .coerceIn(0, (messages.lastIndex).coerceAtLeast(0))
     val restoredOffset = scrollPosition.firstVisibleItemScrollOffset.coerceAtLeast(0)
-    val canRestorePosition = scrollPosition.hasSavedPosition && scrollPosition.conversationId == conversationId
+    val canRestorePosition =
+        scrollPosition.hasSavedPosition && scrollPosition.conversationId == conversationId
     val listState = remember(conversationId) {
         LazyListState(restoredIndex, restoredOffset)
     }
@@ -631,7 +780,8 @@ private fun ChatMessagesArea(
         } else if (
             !isStreaming &&
             messages.isNotEmpty() &&
-            (listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1) >= messages.lastIndex - 1
+            (listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index
+                ?: -1) >= messages.lastIndex - 1
         ) {
             listState.animateScrollToItem(messages.lastIndex)
         }
@@ -641,7 +791,8 @@ private fun ChatMessagesArea(
         val compactLayout = maxWidth < 600.dp
         LazyColumn(
             state = listState,
-            modifier = Modifier.fillMaxSize().padding(horizontal = if (compactLayout) 12.dp else 20.dp),
+            modifier = Modifier.fillMaxSize()
+                .padding(horizontal = if (compactLayout) 12.dp else 20.dp),
             verticalArrangement = Arrangement.spacedBy(if (compactLayout) 12.dp else 18.dp)
         ) {
             item { Spacer(Modifier.height(4.dp)) }
@@ -651,7 +802,8 @@ private fun ChatMessagesArea(
                     showThinking = isStreaming && msg.id == messages.lastOrNull()?.id,
                     assistantActivity = assistantActivity,
                     compactLayout = compactLayout,
-                    attachments = messageAttachments[msg.id].orEmpty()
+                    attachments = messageAttachments[msg.id].orEmpty(),
+                    markdownStreamChunks = markdownStreamChunks
                 )
             }
             item { Spacer(Modifier.height(4.dp)) }
@@ -665,7 +817,8 @@ private fun ChatBubble(
     showThinking: Boolean,
     assistantActivity: AssistantActivity?,
     compactLayout: Boolean,
-    attachments: List<FileAsset>
+    attachments: List<FileAsset>,
+    markdownStreamChunks: kotlinx.coroutines.flow.Flow<MarkdownStreamChunk>
 ) {
     val clipboardManager = LocalClipboardManager.current
     val isQuestion = msg.type == ChatItemType.Question
@@ -709,45 +862,63 @@ private fun ChatBubble(
                     bottomEnd = if (isQuestion) 6.dp else 14.dp
                 )
             ) {
-                Column(modifier = Modifier.padding(horizontal = bubblePaddingHorizontal, vertical = bubblePaddingVertical)) {
-                SelectionContainer {
+                Column(
+                    modifier = Modifier.padding(
+                        horizontal = bubblePaddingHorizontal,
+                        vertical = bubblePaddingVertical
+                    )
+                ) {
                     when (msg.contentType) {
                         MessageContentType.Markdown -> MarkdownMessage(
                             msg.content,
+                            messageId = msg.id,
+                            chunkFlow = remember(msg.id, markdownStreamChunks) {
+                                markdownStreamChunks
+                                    .filter { it.messageId == msg.id }
+                                    .map { it.content }
+                            },
                             compactLayout = compactLayout
                         )
-                        else -> Text(
-                            msg.content,
-                            style = MaterialTheme.typography.bodyMedium.copy(fontSize = textSize, lineHeight = lineHeight)
-                        )
-                    }
-                }
-                if (attachments.isNotEmpty()) {
-                    Spacer(Modifier.height(8.dp))
-                    MessageAttachments(attachments)
-                }
-                if (!isQuestion && msg.content.isNotBlank() && !msg.isLoading) {
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                        IconButton(
-                            onClick = { clipboardManager.setText(AnnotatedString(msg.content)) },
-                            modifier = Modifier.size(32.dp)
-                        ) {
-                            Icon(
-                                FeatherIcons.Copy,
-                                contentDescription = stringResource(Res.string.copy_message),
-                                modifier = Modifier.size(16.dp)
+
+                        else -> SelectionContainer {
+                            Text(
+                                msg.content,
+                                style = MaterialTheme.typography.bodyMedium.copy(
+                                    fontSize = textSize,
+                                    lineHeight = lineHeight
+                                )
                             )
                         }
                     }
-                }
-                // Show "Thinking" only until the first stream chunk arrives. Afterwards the
-                // changing response text is the progress indicator.
-                if (msg.isLoading || (!isQuestion && showThinking && msg.content.isBlank())) {
-                    Spacer(Modifier.height(4.dp))
-                    ActivityIndicator(assistantActivity)
+                    if (attachments.isNotEmpty()) {
+                        Spacer(Modifier.height(8.dp))
+                        MessageAttachments(attachments)
+                    }
+                    if (!isQuestion && msg.content.isNotBlank() && !msg.isLoading) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.End
+                        ) {
+                            IconButton(
+                                onClick = { clipboardManager.setText(AnnotatedString(msg.content)) },
+                                modifier = Modifier.size(32.dp)
+                            ) {
+                                Icon(
+                                    FeatherIcons.Copy,
+                                    contentDescription = stringResource(Res.string.copy_message),
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
+                        }
+                    }
+                    // Show "Thinking" only until the first stream chunk arrives. Afterwards the
+                    // changing response text is the progress indicator.
+                    if (msg.isLoading || (!isQuestion && showThinking && msg.content.isBlank())) {
+                        Spacer(Modifier.height(4.dp))
+                        ActivityIndicator(assistantActivity)
+                    }
                 }
             }
-        }
         }
 
         if (isQuestion) {
@@ -762,6 +933,7 @@ private fun ChatBubble(
         }
     }
 }
+
 
 @Composable
 private fun MessageAttachments(attachments: List<FileAsset>) {
@@ -787,11 +959,23 @@ private fun MessageAttachments(attachments: List<FileAsset>) {
                         modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(FeatherIcons.Paperclip, contentDescription = null, modifier = Modifier.size(15.dp))
+                        Icon(
+                            FeatherIcons.Paperclip,
+                            contentDescription = null,
+                            modifier = Modifier.size(15.dp)
+                        )
                         Spacer(Modifier.width(7.dp))
                         Column(modifier = Modifier.weight(1f)) {
-                            Text(asset.displayName, style = MaterialTheme.typography.labelLarge, maxLines = 1)
-                            Text(asset.mimeType, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(
+                                asset.displayName,
+                                style = MaterialTheme.typography.labelLarge,
+                                maxLines = 1
+                            )
+                            Text(
+                                asset.mimeType,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
                         }
                     }
                 }
@@ -841,14 +1025,32 @@ private fun ChatInputBar(
 ) {
     Column(modifier = modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp)) {
         if (attachments.isNotEmpty()) {
-            LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.padding(bottom = 6.dp)) {
+            LazyRow(
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                modifier = Modifier.padding(bottom = 6.dp)
+            ) {
                 items(attachments, key = { it.id }) { asset ->
                     Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)) {
-                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(start = 8.dp, end = 2.dp)) {
-                            Icon(FeatherIcons.Paperclip, contentDescription = null, modifier = Modifier.size(13.dp))
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(start = 8.dp, end = 2.dp)
+                        ) {
+                            Icon(
+                                FeatherIcons.Paperclip,
+                                contentDescription = null,
+                                modifier = Modifier.size(13.dp)
+                            )
                             Spacer(Modifier.width(4.dp))
-                            Text(asset.displayName, style = MaterialTheme.typography.labelSmall, maxLines = 1, modifier = Modifier.widthIn(max = 130.dp))
-                            TextButton(onClick = { onRemoveAttachment(asset.id) }, contentPadding = androidx.compose.foundation.layout.PaddingValues(4.dp)) {
+                            Text(
+                                asset.displayName,
+                                style = MaterialTheme.typography.labelSmall,
+                                maxLines = 1,
+                                modifier = Modifier.widthIn(max = 130.dp)
+                            )
+                            TextButton(
+                                onClick = { onRemoveAttachment(asset.id) },
+                                contentPadding = androidx.compose.foundation.layout.PaddingValues(4.dp)
+                            ) {
                                 Text("×")
                             }
                         }
@@ -862,7 +1064,11 @@ private fun ChatInputBar(
                 horizontalArrangement = Arrangement.Center
             ) {
                 TextButton(onClick = onStop) {
-                    Icon(FeatherIcons.Square, stringResource(Res.string.stop), modifier = Modifier.size(14.dp))
+                    Icon(
+                        FeatherIcons.Square,
+                        stringResource(Res.string.stop),
+                        modifier = Modifier.size(14.dp)
+                    )
                     Spacer(Modifier.width(5.dp))
                     Text(stringResource(Res.string.stop))
                 }
@@ -885,7 +1091,10 @@ private fun ChatInputBar(
                     )
                 },
                 enabled = enabled && !isStreaming,
-                textStyle = MaterialTheme.typography.bodyMedium.copy(fontSize = 14.sp, lineHeight = 20.sp),
+                textStyle = MaterialTheme.typography.bodyMedium.copy(
+                    fontSize = 14.sp,
+                    lineHeight = 20.sp
+                ),
                 modifier = Modifier
                     .fillMaxWidth()
                     .desktopSendOnEnter(
@@ -912,11 +1121,20 @@ private fun ChatInputBar(
         if (!isStreaming) {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
                 TextButton(onClick = onRegenerate) {
-                    Icon(FeatherIcons.RefreshCw, stringResource(Res.string.regenerate), modifier = Modifier.size(15.dp))
+                    Icon(
+                        FeatherIcons.RefreshCw,
+                        stringResource(Res.string.regenerate),
+                        modifier = Modifier.size(15.dp)
+                    )
                     Spacer(Modifier.width(5.dp))
                     Text(stringResource(Res.string.regenerate), fontSize = 12.sp)
                 }
-                TextButton(onClick = onContinue) { Text(stringResource(Res.string.continue_generation), fontSize = 12.sp) }
+                TextButton(onClick = onContinue) {
+                    Text(
+                        stringResource(Res.string.continue_generation),
+                        fontSize = 12.sp
+                    )
+                }
             }
         }
     }
