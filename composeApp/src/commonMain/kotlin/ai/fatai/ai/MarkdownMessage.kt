@@ -10,8 +10,14 @@ import androidx.compose.ui.text.TextLinkStyles
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.sp
+import com.mikepenz.markdown.compose.components.markdownComponents
+import com.mikepenz.markdown.compose.elements.MarkdownTable
+import com.mikepenz.markdown.compose.elements.MarkdownTableHeader
+import com.mikepenz.markdown.compose.elements.MarkdownTableRow
 import com.mikepenz.markdown.m3.Markdown
+import com.mikepenz.markdown.m3.elements.MarkdownCheckBox
 import com.mikepenz.markdown.m3.markdownTypography
 import com.mikepenz.markdown.model.rememberStreamingMarkdownState
 import kotlinx.coroutines.flow.Flow
@@ -31,6 +37,38 @@ internal fun MarkdownMessage(
 ) {
     key(messageId) {
         val markdownState = rememberStreamingMarkdownState()
+        val chatMarkdownComponents = remember {
+            markdownComponents(
+                table = { model ->
+                    MarkdownTable(
+                        content = model.content,
+                        node = model.node,
+                        style = model.typography.table,
+                        headerBlock = { content, header, tableWidth, style ->
+                            MarkdownTableHeader(
+                                content = content,
+                                header = header,
+                                tableWidth = tableWidth,
+                                style = style,
+                                maxLines = Int.MAX_VALUE,
+                                overflow = TextOverflow.Clip
+                            )
+                        },
+                        rowBlock = { content, row, tableWidth, style ->
+                            MarkdownTableRow(
+                                content = content,
+                                header = row,
+                                tableWidth = tableWidth,
+                                style = style,
+                                maxLines = Int.MAX_VALUE,
+                                overflow = TextOverflow.Clip
+                            )
+                        }
+                    )
+                },
+                checkbox = { MarkdownCheckBox(it.content, it.node, it.typography.text) }
+            )
+        }
         val initialMarkdown = remember(messageId) { markdown }
         val streamingChunks = remember(messageId, chunkFlow) {
             flow {
@@ -48,7 +86,8 @@ internal fun MarkdownMessage(
         Markdown(
             streamingMarkdownState = markdownState,
             modifier = modifier,
-            typography = markdownTypography(compactLayout)
+            typography = markdownTypography(compactLayout),
+            components = chatMarkdownComponents
         )
     }
 }
