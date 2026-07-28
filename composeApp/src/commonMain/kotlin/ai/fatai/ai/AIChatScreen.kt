@@ -605,10 +605,11 @@ private fun ChatMessagesArea(
     val restoredIndex = scrollPosition.firstVisibleItemIndex
         .coerceIn(0, (messages.lastIndex).coerceAtLeast(0))
     val restoredOffset = scrollPosition.firstVisibleItemScrollOffset.coerceAtLeast(0)
+    val canRestorePosition = scrollPosition.hasSavedPosition && scrollPosition.conversationId == conversationId
     val listState = remember(conversationId) {
         LazyListState(restoredIndex, restoredOffset)
     }
-    var hasRestoredPosition by remember(conversationId) { mutableStateOf(false) }
+    var hasInitializedPosition by remember(conversationId) { mutableStateOf(false) }
 
     LaunchedEffect(listState, conversationId) {
         if (conversationId == null) return@LaunchedEffect
@@ -618,8 +619,11 @@ private fun ChatMessagesArea(
     }
 
     LaunchedEffect(messages.lastOrNull()?.id, messages.lastOrNull()?.content) {
-        if (!hasRestoredPosition) {
-            hasRestoredPosition = true
+        if (!hasInitializedPosition) {
+            hasInitializedPosition = true
+            if (!canRestorePosition && messages.isNotEmpty()) {
+                listState.scrollToItem(messages.lastIndex)
+            }
         } else if (
             messages.isNotEmpty() &&
             listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1 >= messages.lastIndex - 1

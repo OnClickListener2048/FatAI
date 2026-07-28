@@ -60,7 +60,8 @@ data class ChatScreenState(
 data class ChatScrollPosition(
     val conversationId: String? = null,
     val firstVisibleItemIndex: Int = 0,
-    val firstVisibleItemScrollOffset: Int = 0
+    val firstVisibleItemScrollOffset: Int = 0,
+    val hasSavedPosition: Boolean = false
 )
 
 enum class AssistantActivity { Thinking, Searching, CheckingWeather, UsingTool }
@@ -220,10 +221,12 @@ class AIChatViewModel(
     fun selectConversation(conversationId: String) {
         val messages = chatRepository.getMessages(conversationId)
         val assets = fileAssetRepository.forConversation(conversationId)
+        val scrollPosition = _state.value.chatScrollPosition
         _state.value = _state.value.copy(
             currentConversationId = conversationId,
             messages = messages,
-            chatScrollPosition = ChatScrollPosition(conversationId = conversationId),
+            chatScrollPosition = scrollPosition.takeIf { it.conversationId == conversationId }
+                ?: ChatScrollPosition(conversationId = conversationId),
             attachments = assets.filter { it.messageId == null },
             messageAttachments = assets
                 .filter { it.messageId != null }
@@ -246,7 +249,8 @@ class AIChatViewModel(
             chatScrollPosition = ChatScrollPosition(
                 conversationId = conversationId,
                 firstVisibleItemIndex = firstVisibleItemIndex,
-                firstVisibleItemScrollOffset = firstVisibleItemScrollOffset
+                firstVisibleItemScrollOffset = firstVisibleItemScrollOffset,
+                hasSavedPosition = true
             )
         )
     }
