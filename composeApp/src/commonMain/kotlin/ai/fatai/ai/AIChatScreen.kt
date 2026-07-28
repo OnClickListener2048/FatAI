@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -57,6 +58,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -69,6 +71,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.distinctUntilChanged
 import ai.fatai.bean.ChatItemType
 import ai.fatai.bean.MessageContentType
 import ai.fatai.repo.Conversation
@@ -79,6 +82,7 @@ import ai.fatai.feature.user.UserRepository
 import ai.fatai.repo.ApiKeyRepository
 import ai.fatai.viewmodel.AIChatViewModel
 import ai.fatai.viewmodel.AssistantActivity
+import ai.fatai.viewmodel.ChatScrollPosition
 import fatai.composeapp.generated.resources.Res
 import fatai.composeapp.generated.resources.*
 import org.jetbrains.compose.resources.stringResource
@@ -228,6 +232,8 @@ class AIChatScreen {
                             messageAttachments = state.messageAttachments,
                             isStreaming = state.isStreaming,
                             assistantActivity = state.assistantActivity,
+                            scrollPosition = state.chatScrollPosition,
+                            onScrollPositionChange = viewModel::updateChatScrollPosition,
                             modifier = Modifier.weight(1f)
                         )
                         HorizontalDivider()
@@ -591,12 +597,33 @@ private fun ChatMessagesArea(
     messageAttachments: Map<String, List<FileAsset>>,
     isStreaming: Boolean,
     assistantActivity: AssistantActivity?,
+    scrollPosition: ChatScrollPosition,
+    onScrollPositionChange: (String, Int, Int) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val listState = rememberLazyListState()
+    val conversationId = messages.firstOrNull()?.conversationId
+    val restoredIndex = scrollPosition.firstVisibleItemIndex
+        .coerceIn(0, (messages.lastIndex).coerceAtLeast(0))
+    val restoredOffset = scrollPosition.firstVisibleItemScrollOffset.coerceAtLeast(0)
+    val listState = remember(conversationId) {
+        LazyListState(restoredIndex, restoredOffset)
+    }
+    var hasRestoredPosition by remember(conversationId) { mutableStateOf(false) }
 
-    LaunchedEffect(messages.size, messages.lastOrNull()?.content) {
-        if (messages.isNotEmpty()) {
+    LaunchedEffect(listState, conversationId) {
+        if (conversationId == null) return@LaunchedEffect
+        snapshotFlow { listState.firstVisibleItemIndex to listState.firstVisibleItemScrollOffset }
+            .distinctUntilChanged()
+            .collect { (index, offset) -> onScrollPositionChange(conversationId, index, offset) }
+    }
+
+    LaunchedEffect(messages.lastOrNull()?.id, messages.lastOrNull()?.content) {
+        if (!hasRestoredPosition) {
+            hasRestoredPosition = true
+        } else if (
+            messages.isNotEmpty() &&
+            listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1 >= messages.lastIndex - 1
+        ) {
             listState.animateScrollToItem(messages.lastIndex)
         }
     }

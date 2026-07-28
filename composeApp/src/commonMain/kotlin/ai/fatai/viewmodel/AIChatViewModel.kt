@@ -48,12 +48,19 @@ data class ChatScreenState(
     val messageAttachments: Map<String, List<FileAsset>> = emptyMap(),
     val messages: List<ChatItem> = emptyList(),
     val currentConversationId: String? = null,
+    val chatScrollPosition: ChatScrollPosition = ChatScrollPosition(),
     val isStreaming: Boolean = false,
     val assistantActivity: AssistantActivity? = null,
     val isLoading: Boolean = false,
     val inputText: String = "",
     val activeProvider: ProviderType = ProviderType.OpenAI,
     val activeConfig: ProviderConfig? = null
+)
+
+data class ChatScrollPosition(
+    val conversationId: String? = null,
+    val firstVisibleItemIndex: Int = 0,
+    val firstVisibleItemScrollOffset: Int = 0
 )
 
 enum class AssistantActivity { Thinking, Searching, CheckingWeather, UsingTool }
@@ -216,11 +223,31 @@ class AIChatViewModel(
         _state.value = _state.value.copy(
             currentConversationId = conversationId,
             messages = messages,
+            chatScrollPosition = ChatScrollPosition(conversationId = conversationId),
             attachments = assets.filter { it.messageId == null },
             messageAttachments = assets
                 .filter { it.messageId != null }
                 .groupBy { it.messageId!! },
             inputText = ""
+        )
+    }
+
+    fun updateChatScrollPosition(conversationId: String, firstVisibleItemIndex: Int, firstVisibleItemScrollOffset: Int) {
+        val current = _state.value
+        if (current.currentConversationId != conversationId) return
+        val position = current.chatScrollPosition
+        if (
+            position.conversationId == conversationId &&
+            position.firstVisibleItemIndex == firstVisibleItemIndex &&
+            position.firstVisibleItemScrollOffset == firstVisibleItemScrollOffset
+        ) return
+
+        _state.value = current.copy(
+            chatScrollPosition = ChatScrollPosition(
+                conversationId = conversationId,
+                firstVisibleItemIndex = firstVisibleItemIndex,
+                firstVisibleItemScrollOffset = firstVisibleItemScrollOffset
+            )
         )
     }
 
