@@ -55,7 +55,7 @@ The project includes all planned feature modules, but Knowledge, Tools, and Agen
 ### Chat and UI
 
 - Responsive Open WebUI-inspired layout: fixed desktop sidebar and mobile navigation drawer.
-- Conversation create, search, pin, archive, delete, automatic first-message title, restoration of the latest saved conversation and messages (initially positioned at the latest message), and preservation of the reading position when returning from Settings.
+- Conversation create, search, pin, archive, delete, automatic first-message title, restoration of the latest saved conversation and messages (initially positioned at the latest message), and preservation of the reading position when leaving for and returning from Settings without interfering with streaming updates.
 - SSE streaming, stop generation, regenerate, and continue generation.
 - A streaming “Thinking…” indicator.
 - OpenAI-compatible function calling for built-in tools; web searches call the local FatAI server and return cited result URLs to the model before it writes the final answer.
