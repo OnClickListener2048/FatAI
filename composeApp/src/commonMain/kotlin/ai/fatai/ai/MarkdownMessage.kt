@@ -19,6 +19,7 @@ import com.mikepenz.markdown.compose.elements.MarkdownTableRow
 import com.mikepenz.markdown.m3.Markdown
 import com.mikepenz.markdown.m3.elements.MarkdownCheckBox
 import com.mikepenz.markdown.m3.markdownTypography
+import com.mikepenz.markdown.model.State
 import com.mikepenz.markdown.model.rememberStreamingMarkdownState
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emitAll
@@ -33,10 +34,10 @@ internal fun MarkdownMessage(
     messageId: String,
     chunkFlow: Flow<String>,
     compactLayout: Boolean,
+    cachedState: State.Success? = null,
     modifier: Modifier = Modifier
 ) {
     key(messageId) {
-        val markdownState = rememberStreamingMarkdownState()
         val chatMarkdownComponents = remember {
             markdownComponents(
                 table = { model ->
@@ -69,26 +70,37 @@ internal fun MarkdownMessage(
                 checkbox = { MarkdownCheckBox(it.content, it.node, it.typography.text) }
             )
         }
-        val initialMarkdown = remember(messageId) { markdown }
-        val streamingChunks = remember(messageId, chunkFlow) {
-            flow {
-                if (initialMarkdown.isNotEmpty()) emit(initialMarkdown)
-                emitAll(chunkFlow)
-            }
-        }
 
-        LaunchedEffect(streamingChunks, markdownState) {
-            streamingChunks.collect { chunk ->
-                if (chunk.isNotEmpty()) markdownState.append(chunk)
+        if (cachedState != null) {
+            Markdown(
+                state = cachedState,
+                modifier = modifier,
+                typography = markdownTypography(compactLayout),
+                components = chatMarkdownComponents
+            )
+        } else {
+            val markdownState = rememberStreamingMarkdownState()
+            val initialMarkdown = remember(messageId) { markdown }
+            val streamingChunks = remember(messageId, chunkFlow) {
+                flow {
+                    if (initialMarkdown.isNotEmpty()) emit(initialMarkdown)
+                    emitAll(chunkFlow)
+                }
             }
-        }
 
-        Markdown(
-            streamingMarkdownState = markdownState,
-            modifier = modifier,
-            typography = markdownTypography(compactLayout),
-            components = chatMarkdownComponents
-        )
+            LaunchedEffect(streamingChunks, markdownState) {
+                streamingChunks.collect { chunk ->
+                    if (chunk.isNotEmpty()) markdownState.append(chunk)
+                }
+            }
+
+            Markdown(
+                streamingMarkdownState = markdownState,
+                modifier = modifier,
+                typography = markdownTypography(compactLayout),
+                components = chatMarkdownComponents
+            )
+        }
     }
 }
 
