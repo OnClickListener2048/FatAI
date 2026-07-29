@@ -808,15 +808,21 @@ private fun ChatMessagesArea(
         if (!hasInitializedPosition) {
             hasInitializedPosition = true
             if (!canRestorePosition && messages.isNotEmpty()) {
-                listState.scrollToItem(messages.lastIndex)
+                listState.scrollToItem(messages.lastIndex, Int.MAX_VALUE)
             }
+        } else if (isStreaming && messages.isNotEmpty()) {
+            // A streaming response can become taller than the viewport. Scroll to the end of
+            // its item (instead of only its start) after every new chunk so the newest text
+            // remains visible. Using an immediate scroll prevents high-frequency chunks from
+            // continually cancelling and restarting scroll animations.
+            listState.scrollToItem(messages.lastIndex, Int.MAX_VALUE)
         } else if (
             !isStreaming &&
             messages.isNotEmpty() &&
             (listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index
                 ?: -1) >= messages.lastIndex - 1
         ) {
-            listState.animateScrollToItem(messages.lastIndex)
+            listState.animateScrollToItem(messages.lastIndex, Int.MAX_VALUE)
         }
     }
 
