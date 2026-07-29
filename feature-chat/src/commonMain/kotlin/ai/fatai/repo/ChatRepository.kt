@@ -3,6 +3,9 @@ package ai.fatai.repo
 import ai.fatai.database.sqldelight.WatsonQueries
 import ai.fatai.bean.ChatItemType
 import ai.fatai.bean.MessageContentType
+import ai.fatai.chat.markdown.MarkdownDocument
+import ai.fatai.chat.markdown.MarkdownDocumentCodec
+import ai.fatai.chat.markdown.MarkdownParser
 import ai.fatai.feature.user.CurrentUserProvider
 import kotlin.time.Clock
 import kotlin.uuid.Uuid
@@ -29,6 +32,7 @@ data class ChatItem(
     val type: ChatItemType,
     val contentType: MessageContentType,
     val createdAt: Long,
+    val markdownDocument: MarkdownDocument? = null,
     val reasoningContent: String = "",
     val isLoading: Boolean = false
 )
@@ -107,6 +111,20 @@ class ChatRepository(
 
     fun getMessages(conversationId: String): List<ChatItem> {
         return queries.selectAllOrderedByTime(conversationId, currentUser.currentUserId).executeAsList().map { row ->
+            val markdownDocument = row.markdownDocument
+                .takeIf(String::isNotBlank)
+                ?.let(MarkdownDocumentCodec::decode)
+                ?: row.content
+                    .takeIf { row.contentType == MessageContentType.Markdown && it.isNotBlank() }
+                    ?.let(MarkdownParser::parse)
+                    ?.also { document ->
+                        // Existing conversations receive the persistent render model on first load.
+                        queries.updateMarkdownDocumentById(
+                            markdownDocument = MarkdownDocumentCodec.encode(document),
+                            id = row.id,
+                            userId = currentUser.currentUserId
+                        )
+                    }
             ChatItem(
                 id = row.id,
                 userId = row.userId,
@@ -114,7 +132,8 @@ class ChatRepository(
                 content = row.content,
                 type = row.type,
                 contentType = row.contentType,
-                createdAt = row.createdAt
+                createdAt = row.createdAt,
+                markdownDocument = markdownDocument
             )
         }
     }
@@ -128,17 +147,30 @@ class ChatRepository(
     ): ChatItem {
         val id = Uuid.random().toString()
         val time = now()
+        val markdownDocument = content
+            .takeIf { contentType == MessageContentType.Markdown && it.isNotBlank() }
+            ?.let(MarkdownParser::parse)
         queries.insertItem(
+            id = id,
+            userId = currentUser.currentUserId,
+            conversationId = conversationId,
+            content = content,
+            markdownDocument = markdownDocument?.let(MarkdownDocumentCodec::encode).orEmpty(),
+            type = type,
+            contentType = contentType,
+            createdAt = time
+        )
+        updateConversationTimestamp(conversationId)
+        return ChatItem(
             id = id,
             userId = currentUser.currentUserId,
             conversationId = conversationId,
             content = content,
             type = type,
             contentType = contentType,
-            createdAt = time
+            createdAt = time,
+            markdownDocument = markdownDocument
         )
-        updateConversationTimestamp(conversationId)
-        return ChatItem(id, currentUser.currentUserId, conversationId, content, type, contentType, time)
     }
 
     fun updateMessageContent(id: String, content: String) {
