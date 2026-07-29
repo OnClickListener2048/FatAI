@@ -37,6 +37,8 @@ kotlin {
             implementation(project(":feature-prompt"))
             implementation(project(":feature-chat"))
             implementation(project(":feature-settings"))
+            implementation(project(":feature-user"))
+            implementation(project(":feature-tools"))
 
             // Koin 核心库
             implementation(libs.koin.core)
@@ -66,7 +68,7 @@ kotlin {
 }
 
 android {
-    namespace = "org.example.project.shared"
+    namespace = "ai.fatai.shared"
     compileSdk = libs.versions.android.compileSdk.get().toInt()
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11

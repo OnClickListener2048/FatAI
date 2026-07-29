@@ -1,0 +1,278 @@
+import ai.fatai.bean.ChatItemType;
+import ai.fatai.bean.MessageContentType;
+import ai.fatai.chat.ProviderType;
+
+CREATE TABLE UserAccount (
+    id TEXT NOT NULL PRIMARY KEY,
+    name TEXT NOT NULL,
+    createdAt INTEGER NOT NULL,
+    updatedAt INTEGER NOT NULL
+);
+
+CREATE TABLE ChatItem (
+    id TEXT NOT NULL PRIMARY KEY,
+    userId TEXT NOT NULL REFERENCES UserAccount(id),
+    conversationId TEXT NOT NULL DEFAULT 'default',
+    content TEXT NOT NULL,
+    markdownDocument TEXT NOT NULL DEFAULT '',
+    type TEXT AS ChatItemType NOT NULL CHECK(type IN ('Question', 'Answer')),
+    contentType TEXT AS MessageContentType NOT NULL DEFAULT 'Markdown'
+        CHECK(contentType IN ('Text', 'Markdown', 'Image', 'File', 'ToolResult', 'Thinking')),
+    createdAt INTEGER NOT NULL,
+    FOREIGN KEY (conversationId) REFERENCES Conversation(id) ON DELETE CASCADE
+);
+
+CREATE TABLE Conversation (
+    id TEXT NOT NULL PRIMARY KEY,
+    userId TEXT NOT NULL REFERENCES UserAccount(id),
+    title TEXT NOT NULL DEFAULT 'New Chat',
+    workspaceId TEXT NOT NULL DEFAULT 'inbox',
+    providerType TEXT AS ProviderType NOT NULL,
+    model TEXT NOT NULL DEFAULT '',
+    createdAt INTEGER NOT NULL,
+    updatedAt INTEGER NOT NULL,
+    isPinned INTEGER NOT NULL DEFAULT 0,
+    isArchived INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE ApiKey (
+    id TEXT NOT NULL PRIMARY KEY,
+    userId TEXT NOT NULL REFERENCES UserAccount(id),
+    providerType TEXT AS ProviderType NOT NULL,
+    name TEXT NOT NULL,
+    apiKey TEXT NOT NULL,
+    baseUrl TEXT NOT NULL DEFAULT '',
+    model TEXT NOT NULL DEFAULT '',
+    isActive INTEGER NOT NULL DEFAULT 0,
+    createdAt INTEGER NOT NULL
+);
+
+CREATE TABLE Workspace (
+    id TEXT NOT NULL PRIMARY KEY,
+    userId TEXT NOT NULL REFERENCES UserAccount(id),
+    name TEXT NOT NULL,
+    systemPrompt TEXT NOT NULL DEFAULT '',
+    createdAt INTEGER NOT NULL,
+    updatedAt INTEGER NOT NULL,
+    isArchived INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE MemoryEntry (
+    id TEXT NOT NULL PRIMARY KEY,
+    userId TEXT NOT NULL REFERENCES UserAccount(id),
+    scope TEXT NOT NULL CHECK(scope IN ('GLOBAL', 'WORKSPACE', 'CONVERSATION')),
+    workspaceId TEXT,
+    conversationId TEXT,
+    kind TEXT NOT NULL CHECK(kind IN ('FACT', 'SUMMARY')),
+    content TEXT NOT NULL,
+    createdAt INTEGER NOT NULL,
+    updatedAt INTEGER NOT NULL,
+    isArchived INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE PromptTemplate (
+    id TEXT NOT NULL PRIMARY KEY,
+    userId TEXT NOT NULL REFERENCES UserAccount(id),
+    name TEXT NOT NULL,
+    content TEXT NOT NULL,
+    workspaceId TEXT,
+    priority INTEGER NOT NULL DEFAULT 0,
+    isEnabled INTEGER NOT NULL DEFAULT 1,
+    createdAt INTEGER NOT NULL,
+    updatedAt INTEGER NOT NULL
+);
+
+CREATE TABLE FileAsset (
+    id TEXT NOT NULL PRIMARY KEY,
+    userId TEXT NOT NULL REFERENCES UserAccount(id),
+    workspaceId TEXT,
+    conversationId TEXT,
+    messageId TEXT,
+    displayName TEXT NOT NULL,
+    mimeType TEXT NOT NULL,
+    localPath TEXT NOT NULL,
+    sizeBytes INTEGER NOT NULL DEFAULT 0,
+    createdAt INTEGER NOT NULL
+);
+
+CREATE TABLE AppSetting (
+    userId TEXT NOT NULL REFERENCES UserAccount(id),
+    key TEXT NOT NULL,
+    value TEXT NOT NULL,
+    updatedAt INTEGER NOT NULL,
+    PRIMARY KEY (userId, key)
+);
+
+selectAllOrderedByTime:
+SELECT * FROM ChatItem WHERE conversationId = :conversationId AND userId = :userId ORDER BY createdAt ASC;
+
+selectById:
+SELECT * FROM ChatItem WHERE id = :id AND userId = :userId;
+
+insertItem:
+INSERT INTO ChatItem(id, userId, conversationId, content, markdownDocument, type, contentType, createdAt)
+VALUES (:id, :userId, :conversationId, :content, :markdownDocument, :type, :contentType, :createdAt);
+
+updateContentById:
+UPDATE ChatItem SET content = :content WHERE id = :id AND userId = :userId;
+
+updateMarkdownDocumentById:
+UPDATE ChatItem SET markdownDocument = :markdownDocument WHERE id = :id AND userId = :userId;
+
+deleteById:
+DELETE FROM ChatItem WHERE id = :id AND userId = :userId;
+
+deleteByConversationId:
+DELETE FROM ChatItem WHERE conversationId = :conversationId AND userId = :userId;
+
+clearAll:
+DELETE FROM ChatItem WHERE userId = :userId;
+
+selectConversations:
+SELECT * FROM Conversation WHERE userId = :userId AND isArchived = 0 ORDER BY updatedAt DESC;
+
+selectConversationsForWorkspace:
+SELECT * FROM Conversation
+WHERE userId = :userId AND isArchived = 0 AND workspaceId = :workspaceId
+ORDER BY updatedAt DESC;
+
+selectArchivedConversations:
+SELECT * FROM Conversation WHERE userId = :userId AND isArchived = 1 ORDER BY updatedAt DESC;
+
+searchConversations:
+SELECT * FROM Conversation WHERE userId = :userId AND title LIKE ('%' || :query || '%') AND isArchived = 0 ORDER BY updatedAt DESC;
+
+selectConversationById:
+SELECT * FROM Conversation WHERE id = :id AND userId = :userId;
+
+insertConversation:
+INSERT INTO Conversation(id, userId, title, workspaceId, providerType, model, createdAt, updatedAt, isPinned, isArchived)
+VALUES (:id, :userId, :title, :workspaceId, :providerType, :model, :createdAt, :updatedAt, :isPinned, :isArchived);
+
+updateConversationTitle:
+UPDATE Conversation SET title = :title, updatedAt = :updatedAt WHERE id = :id AND userId = :userId;
+
+updateConversationPin:
+UPDATE Conversation SET isPinned = :isPinned, updatedAt = :updatedAt WHERE id = :id AND userId = :userId;
+
+updateConversationArchive:
+UPDATE Conversation SET isArchived = :isArchived, updatedAt = :updatedAt WHERE id = :id AND userId = :userId;
+
+updateConversationUpdatedAt:
+UPDATE Conversation SET updatedAt = :updatedAt WHERE id = :id AND userId = :userId;
+
+deleteConversation:
+DELETE FROM Conversation WHERE id = :id AND userId = :userId;
+
+selectAllApiKeys:
+SELECT * FROM ApiKey WHERE userId = :userId ORDER BY createdAt DESC;
+
+selectApiKeyById:
+SELECT * FROM ApiKey WHERE id = :id AND userId = :userId;
+
+selectApiKeysByProvider:
+SELECT * FROM ApiKey WHERE userId = :userId AND providerType = :providerType;
+
+selectActiveApiKey:
+SELECT * FROM ApiKey WHERE userId = :userId AND isActive = 1 LIMIT 1;
+
+insertApiKey:
+INSERT INTO ApiKey(id, userId, providerType, name, apiKey, baseUrl, model, isActive, createdAt)
+VALUES (:id, :userId, :providerType, :name, :apiKey, :baseUrl, :model, :isActive, :createdAt);
+
+updateApiKeyActive:
+UPDATE ApiKey SET isActive = :isActive WHERE id = :id AND userId = :userId;
+
+deactivateAllApiKeys:
+UPDATE ApiKey SET isActive = 0 WHERE userId = :userId;
+
+deleteApiKey:
+DELETE FROM ApiKey WHERE id = :id AND userId = :userId;
+
+selectWorkspaces:
+SELECT * FROM Workspace WHERE userId = :userId AND isArchived = 0 ORDER BY updatedAt DESC;
+
+selectWorkspaceById:
+SELECT * FROM Workspace WHERE id = :id AND userId = :userId;
+
+insertWorkspace:
+INSERT INTO Workspace(id, userId, name, systemPrompt, createdAt, updatedAt, isArchived)
+VALUES (:id, :userId, :name, :systemPrompt, :createdAt, :updatedAt, :isArchived);
+
+updateWorkspace:
+UPDATE Workspace SET name = :name, systemPrompt = :systemPrompt, updatedAt = :updatedAt
+WHERE id = :id AND userId = :userId;
+
+archiveWorkspace:
+UPDATE Workspace SET isArchived = :isArchived, updatedAt = :updatedAt WHERE id = :id AND userId = :userId;
+
+selectMemoriesForContext:
+SELECT * FROM MemoryEntry
+WHERE userId = :userId AND isArchived = 0
+  AND (scope = 'GLOBAL' OR workspaceId = :workspaceId OR conversationId = :conversationId)
+ORDER BY updatedAt DESC LIMIT :limit;
+
+insertMemory:
+INSERT INTO MemoryEntry(id, userId, scope, workspaceId, conversationId, kind, content, createdAt, updatedAt, isArchived)
+VALUES (:id, :userId, :scope, :workspaceId, :conversationId, :kind, :content, :createdAt, :updatedAt, :isArchived);
+
+archiveMemory:
+UPDATE MemoryEntry SET isArchived = :isArchived, updatedAt = :updatedAt WHERE id = :id AND userId = :userId;
+
+selectActiveGlobalFactByContent:
+SELECT * FROM MemoryEntry
+WHERE userId = :userId AND scope = 'GLOBAL' AND kind = 'FACT' AND content = :content AND isArchived = 0
+LIMIT 1;
+
+archiveGlobalFactsByPrefix:
+UPDATE MemoryEntry
+SET isArchived = 1, updatedAt = :updatedAt
+WHERE userId = :userId AND scope = 'GLOBAL' AND kind = 'FACT' AND content LIKE (:prefix || '%') AND isArchived = 0;
+
+selectEnabledPromptTemplates:
+SELECT * FROM PromptTemplate
+WHERE userId = :userId AND isEnabled = 1 AND (workspaceId IS NULL OR workspaceId = :workspaceId)
+ORDER BY priority DESC, updatedAt DESC;
+
+insertPromptTemplate:
+INSERT INTO PromptTemplate(id, userId, name, content, workspaceId, priority, isEnabled, createdAt, updatedAt)
+VALUES (:id, :userId, :name, :content, :workspaceId, :priority, :isEnabled, :createdAt, :updatedAt);
+
+updatePromptTemplate:
+UPDATE PromptTemplate
+SET name = :name, content = :content, priority = :priority, isEnabled = :isEnabled, updatedAt = :updatedAt
+WHERE id = :id AND userId = :userId;
+
+deletePromptTemplate:
+DELETE FROM PromptTemplate WHERE id = :id AND userId = :userId;
+
+selectFilesForConversation:
+SELECT * FROM FileAsset WHERE conversationId = :conversationId AND userId = :userId ORDER BY createdAt ASC;
+
+selectPendingFilesForConversation:
+SELECT * FROM FileAsset
+WHERE conversationId = :conversationId AND userId = :userId AND messageId IS NULL
+ORDER BY createdAt ASC;
+
+insertFileAsset:
+INSERT INTO FileAsset(id, userId, workspaceId, conversationId, messageId, displayName, mimeType, localPath, sizeBytes, createdAt)
+VALUES (:id, :userId, :workspaceId, :conversationId, :messageId, :displayName, :mimeType, :localPath, :sizeBytes, :createdAt);
+
+assignPendingFilesToMessage:
+UPDATE FileAsset SET messageId = :messageId
+WHERE conversationId = :conversationId AND userId = :userId AND messageId IS NULL;
+
+deleteFileAsset:
+DELETE FROM FileAsset WHERE id = :id AND userId = :userId;
+
+selectAppSetting:
+SELECT * FROM AppSetting WHERE userId = :userId AND key = :key;
+
+upsertAppSetting:
+INSERT OR REPLACE INTO AppSetting(userId, key, value, updatedAt) VALUES (:userId, :key, :value, :updatedAt);
+
+selectUserById:
+SELECT * FROM UserAccount WHERE id = :id;
+
+insertUser:
+INSERT INTO UserAccount(id, name, createdAt, updatedAt) VALUES (:id, :name, :createdAt, :updatedAt);

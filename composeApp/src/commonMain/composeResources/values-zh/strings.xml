@@ -23,7 +23,11 @@
     <string name="send">发送</string>
     <string name="regenerate">重新生成</string>
     <string name="continue_generation">继续生成</string>
+    <string name="copy_message">复制消息</string>
     <string name="thinking">正在思考…</string>
+    <string name="searching">正在搜索…</string>
+    <string name="checking_weather">正在查询天气…</string>
+    <string name="using_tool">正在调用工具…</string>
     <string name="welcome_title">今天想让我帮你做什么？</string><string name="welcome_provider">FatAI 已准备好使用 %1$s</string><string name="welcome_start_title">开始一次专注对话</string><string name="welcome_start_body">从侧栏选择工作区，将其记忆和指令带入当前对话。</string>
     <string name="fatai_settings">FatAI 设置</string>
     <string name="appearance_model_access">外观与模型访问</string>
@@ -41,6 +45,7 @@
     <string name="delete_key_confirmation">确定删除“%1$s”吗？此操作无法撤销。</string>
     <string name="add_api_key">添加 API 密钥</string>
     <string name="add_api_key_description">连接模型提供商后即可开始聊天。</string>
+    <string name="user_account">用户账号</string>
     <string name="provider">提供商</string>
     <string name="display_name">显示名称</string>
     <string name="api_key">API 密钥</string>

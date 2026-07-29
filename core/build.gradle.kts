@@ -17,7 +17,7 @@ kotlin {
 }
 
 android {
-    namespace = "org.example.project.core"
+    namespace = "ai.fatai.core"
     compileSdk = libs.versions.android.compileSdk.get().toInt()
     defaultConfig { minSdk = libs.versions.android.minSdk.get().toInt() }
 }

@@ -29,7 +29,6 @@ zoomable = "1.7.0"
 decompose = "3.3.0"
 detekt = "1.23.8"
 kover = "0.9.3"
-multiplatformMarkdown = "0.37.0"
 
 [libraries]
 android-driver = { module = "app.cash.sqldelight:android-driver", version.ref = "androidDriver" }
@@ -91,7 +90,6 @@ voyager-transitions = { module = "cafe.adriel.voyager:voyager-transitions", vers
 zoomable = { module = "com.mxalbert.zoomable:zoomable", version.ref = "zoomable" }
 decompose = { module = "com.arkivanov.decompose:decompose", version.ref = "decompose" }
 decompose-compose = { module = "com.arkivanov.decompose:extensions-compose", version.ref = "decompose" }
-multiplatform-markdown-renderer-m3 = { module = "com.mikepenz:multiplatform-markdown-renderer-m3", version.ref = "multiplatformMarkdown" }
 [plugins]
 androidApplication = { id = "com.android.application", version.ref = "agp" }
 androidLibrary = { id = "com.android.library", version.ref = "agp" }

@@ -1,11 +1,17 @@
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
-plugins { alias(libs.plugins.kotlinMultiplatform); alias(libs.plugins.androidLibrary) }
+plugins { alias(libs.plugins.kotlinMultiplatform); alias(libs.plugins.kotlinSerialization); alias(libs.plugins.androidLibrary) }
 
 kotlin {
     androidTarget { compilerOptions { jvmTarget.set(JvmTarget.JVM_17) } }
     iosArm64(); iosSimulatorArm64(); jvm()
-    sourceSets { commonMain.dependencies { implementation(project(":core")) } }
+    sourceSets {
+        commonMain.dependencies {
+            implementation(project(":core"))
+            implementation(libs.ktor.serialization.kotlinx.json)
+            implementation(libs.ktor.client.core)
+        }
+    }
 }
 
-android { namespace = "org.example.project.feature.tools"; compileSdk = libs.versions.android.compileSdk.get().toInt(); defaultConfig { minSdk = libs.versions.android.minSdk.get().toInt() } }
+android { namespace = "ai.fatai.feature.tools"; compileSdk = libs.versions.android.compileSdk.get().toInt(); defaultConfig { minSdk = libs.versions.android.minSdk.get().toInt() } }

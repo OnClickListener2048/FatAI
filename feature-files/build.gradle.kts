@@ -5,7 +5,7 @@ plugins { alias(libs.plugins.kotlinMultiplatform); alias(libs.plugins.androidLib
 kotlin {
     androidTarget { compilerOptions { jvmTarget.set(JvmTarget.JVM_17) } }
     iosArm64(); iosSimulatorArm64(); jvm()
-    sourceSets { commonMain.dependencies { implementation(project(":core")); implementation(project(":database")) } }
+    sourceSets { commonMain.dependencies { implementation(project(":core")); implementation(project(":database")); implementation(project(":feature-user")) } }
 }
 
-android { namespace = "org.example.project.feature.files"; compileSdk = libs.versions.android.compileSdk.get().toInt(); defaultConfig { minSdk = libs.versions.android.minSdk.get().toInt() } }
+android { namespace = "ai.fatai.feature.files"; compileSdk = libs.versions.android.compileSdk.get().toInt(); defaultConfig { minSdk = libs.versions.android.minSdk.get().toInt() } }

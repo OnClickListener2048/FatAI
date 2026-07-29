@@ -14,8 +14,9 @@ kotlin {
             implementation(project(":feature-memory"))
             implementation(project(":feature-workspace"))
             implementation(project(":feature-files"))
+            implementation(project(":feature-user"))
         }
     }
 }
 
-android { namespace = "org.example.project.feature.chat"; compileSdk = libs.versions.android.compileSdk.get().toInt(); defaultConfig { minSdk = libs.versions.android.minSdk.get().toInt() } }
+android { namespace = "ai.fatai.feature.chat"; compileSdk = libs.versions.android.compileSdk.get().toInt(); defaultConfig { minSdk = libs.versions.android.minSdk.get().toInt() } }

@@ -89,12 +89,11 @@ kotlin {
             implementation(project(":feature-files"))
             implementation(project(":feature-prompt"))
             implementation(project(":feature-chat"))
+            implementation(project(":feature-tools"))
             implementation(project(":feature-settings"))
+            implementation(project(":feature-user"))
             implementation(libs.landscapist.placeholder)
             implementation(libs.composeIcons.feather)
-            implementation(libs.multiplatform.markdown.renderer.m3)
-
-
             // Multiplatform
 
             implementation(libs.decompose)
@@ -159,11 +158,11 @@ kotlin {
 }
 
 android {
-    namespace = "org.example.project"
+    namespace = "ai.fatai"
     compileSdk = libs.versions.android.compileSdk.get().toInt()
 
     defaultConfig {
-        applicationId = "org.example.project"
+        applicationId = "ai.fatai.app"
         minSdk = libs.versions.android.minSdk.get().toInt()
         targetSdk = libs.versions.android.targetSdk.get().toInt()
         versionCode = 1
@@ -191,7 +190,7 @@ dependencies {
 
 compose.desktop {
     application {
-        mainClass = "org.example.project.MainKt"
+        mainClass = "ai.fatai.MainKt"
 
         nativeDistributions {
             targetFormats(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.Deb)

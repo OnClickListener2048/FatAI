@@ -15,6 +15,8 @@ kotlin {
         commonMain.dependencies {
             implementation(project(":core"))
             implementation(project(":database"))
+            implementation(project(":feature-user"))
+            implementation(project(":feature-tools"))
             implementation(libs.ktor.client.core)
             implementation(libs.ktor.client.content.negotiation)
             implementation(libs.ktor.serialization.kotlinx.json)
@@ -30,7 +32,7 @@ kotlin {
 }
 
 android {
-    namespace = "org.example.project.feature.model"
+    namespace = "ai.fatai.feature.model"
     compileSdk = libs.versions.android.compileSdk.get().toInt()
     defaultConfig { minSdk = libs.versions.android.minSdk.get().toInt() }
 }

@@ -8,7 +8,7 @@ plugins {
 
 sqldelight {
     databases {
-        create("WatsonDatabase") { packageName.set("com.watson.database") }
+        create("WatsonDatabase") { packageName.set("ai.fatai.database") }
     }
     linkSqlite = true
 }
@@ -30,7 +30,7 @@ kotlin {
 }
 
 android {
-    namespace = "org.example.project.database"
+    namespace = "ai.fatai.database"
     compileSdk = libs.versions.android.compileSdk.get().toInt()
     defaultConfig { minSdk = libs.versions.android.minSdk.get().toInt() }
 }

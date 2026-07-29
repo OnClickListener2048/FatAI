@@ -1,0 +1,31 @@
+CREATE TABLE UserAccount (
+    id TEXT NOT NULL PRIMARY KEY,
+    name TEXT NOT NULL,
+    createdAt INTEGER NOT NULL,
+    updatedAt INTEGER NOT NULL
+);
+
+INSERT INTO UserAccount(id, name, createdAt, updatedAt)
+VALUES ('local-default', 'Default User', 0, 0);
+
+ALTER TABLE ChatItem ADD COLUMN userId TEXT NOT NULL DEFAULT 'local-default';
+ALTER TABLE Conversation ADD COLUMN userId TEXT NOT NULL DEFAULT 'local-default';
+ALTER TABLE ApiKey ADD COLUMN userId TEXT NOT NULL DEFAULT 'local-default';
+ALTER TABLE Workspace ADD COLUMN userId TEXT NOT NULL DEFAULT 'local-default';
+ALTER TABLE MemoryEntry ADD COLUMN userId TEXT NOT NULL DEFAULT 'local-default';
+ALTER TABLE PromptTemplate ADD COLUMN userId TEXT NOT NULL DEFAULT 'local-default';
+ALTER TABLE FileAsset ADD COLUMN userId TEXT NOT NULL DEFAULT 'local-default';
+
+CREATE TABLE AppSetting_new (
+    userId TEXT NOT NULL,
+    key TEXT NOT NULL,
+    value TEXT NOT NULL,
+    updatedAt INTEGER NOT NULL,
+    PRIMARY KEY (userId, key)
+);
+
+INSERT INTO AppSetting_new(userId, key, value, updatedAt)
+SELECT 'local-default', key, value, updatedAt FROM AppSetting;
+
+DROP TABLE AppSetting;
+ALTER TABLE AppSetting_new RENAME TO AppSetting;
