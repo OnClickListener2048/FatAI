@@ -1,6 +1,6 @@
 [versions]
 agp = "8.11.2"
-android-compileSdk = "37"
+android-compileSdk = "36"
 android-minSdk = "24"
 android-targetSdk = "36"
 androidDriver = "2.1.0"
@@ -12,11 +12,11 @@ androidx-lifecycle = "2.9.4"
 androidx-testExt = "1.3.0"
 coilCompose = "3.3.0"
 composeHotReload = "1.0.0-beta07"
-composeMultiplatform = "1.10.0"
+composeMultiplatform = "1.9.0"
 filekitCore = "0.12.0"
 junit = "4.13.2"
 koinAndroid = "4.1.1"
-kotlin = "2.4.0"
+kotlin = "2.2.20"
 kotlinx-coroutines = "1.10.2"
 ktor = "3.3.0"
 ktorClientAndroid = "3.3.1"
@@ -29,7 +29,6 @@ zoomable = "1.7.0"
 decompose = "3.3.0"
 detekt = "1.23.8"
 kover = "0.9.3"
-multiplatformMarkdown = "0.43.0"
 
 [libraries]
 android-driver = { module = "app.cash.sqldelight:android-driver", version.ref = "androidDriver" }
@@ -91,7 +90,6 @@ voyager-transitions = { module = "cafe.adriel.voyager:voyager-transitions", vers
 zoomable = { module = "com.mxalbert.zoomable:zoomable", version.ref = "zoomable" }
 decompose = { module = "com.arkivanov.decompose:decompose", version.ref = "decompose" }
 decompose-compose = { module = "com.arkivanov.decompose:extensions-compose", version.ref = "decompose" }
-multiplatform-markdown-renderer-m3 = { module = "com.mikepenz:multiplatform-markdown-renderer-m3", version.ref = "multiplatformMarkdown" }
 [plugins]
 androidApplication = { id = "com.android.application", version.ref = "agp" }
 androidLibrary = { id = "com.android.library", version.ref = "agp" }

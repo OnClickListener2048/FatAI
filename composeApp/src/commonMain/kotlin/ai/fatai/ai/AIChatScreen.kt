@@ -11,7 +11,6 @@ import ai.fatai.repo.Conversation
 import ai.fatai.viewmodel.AIChatViewModel
 import ai.fatai.viewmodel.AssistantActivity
 import ai.fatai.viewmodel.ChatScrollPosition
-import ai.fatai.viewmodel.MarkdownStreamChunk
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -67,7 +66,6 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -140,12 +138,6 @@ import io.github.vinceglb.filekit.mimeType
 import io.github.vinceglb.filekit.name
 import io.github.vinceglb.filekit.size
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.flow.filter
-import kotlinx.coroutines.flow.filterIsInstance
-import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.flow.map
-import com.mikepenz.markdown.model.State
-import com.mikepenz.markdown.model.parseMarkdownFlow
 import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.koinInject
 import io.github.vinceglb.filekit.coil.AsyncImage as FileKitAsyncImage
@@ -295,7 +287,6 @@ class AIChatScreen {
                             messageAttachments = state.messageAttachments,
                             isStreaming = state.isStreaming,
                             assistantActivity = state.assistantActivity,
-                            markdownStreamChunks = viewModel.markdownStreamChunks,
                             scrollPosition = state.chatScrollPosition,
                             onScrollPositionChange = viewModel::updateChatScrollPosition,
                             modifier = Modifier.weight(1f)
@@ -748,40 +739,11 @@ private fun ChatMessagesArea(
     messageAttachments: Map<String, List<FileAsset>>,
     isStreaming: Boolean,
     assistantActivity: AssistantActivity?,
-    markdownStreamChunks: kotlinx.coroutines.flow.Flow<MarkdownStreamChunk>,
     scrollPosition: ChatScrollPosition,
     onScrollPositionChange: (String, Int, Int) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val conversationId = messages.firstOrNull()?.conversationId
-    val completedMarkdownStates = remember(conversationId) {
-        mutableStateMapOf<String, CachedMarkdownState>()
-    }
-    val streamingMessageId = if (isStreaming) messages.lastOrNull()?.id else null
-    val completedMarkdownMessages = remember(messages, streamingMessageId) {
-        messages.filter { message ->
-            message.contentType == MessageContentType.Markdown &&
-                message.content.isNotBlank() &&
-                message.id != streamingMessageId
-        }
-    }
-
-    LaunchedEffect(completedMarkdownMessages) {
-        completedMarkdownMessages.forEach { message ->
-            val cachedState = completedMarkdownStates[message.id]
-            if (cachedState?.content == message.content) return@forEach
-
-            launch {
-                val parsedState = parseMarkdownFlow(message.content)
-                    .filterIsInstance<State.Success>()
-                    .first()
-                completedMarkdownStates[message.id] = CachedMarkdownState(
-                    content = message.content,
-                    state = parsedState
-                )
-            }
-        }
-    }
     val restoredIndex = scrollPosition.firstVisibleItemIndex
         .coerceIn(0, (messages.lastIndex).coerceAtLeast(0))
     val restoredOffset = scrollPosition.firstVisibleItemScrollOffset.coerceAtLeast(0)
@@ -841,9 +803,7 @@ private fun ChatMessagesArea(
                     showThinking = isStreaming && msg.id == messages.lastOrNull()?.id,
                     assistantActivity = assistantActivity,
                     compactLayout = compactLayout,
-                    attachments = messageAttachments[msg.id].orEmpty(),
-                    markdownStreamChunks = markdownStreamChunks,
-                    cachedMarkdownState = completedMarkdownStates[msg.id]
+                    attachments = messageAttachments[msg.id].orEmpty()
                 )
             }
             item { Spacer(Modifier.height(4.dp)) }
@@ -857,9 +817,7 @@ private fun ChatBubble(
     showThinking: Boolean,
     assistantActivity: AssistantActivity?,
     compactLayout: Boolean,
-    attachments: List<FileAsset>,
-    markdownStreamChunks: kotlinx.coroutines.flow.Flow<MarkdownStreamChunk>,
-    cachedMarkdownState: CachedMarkdownState?
+    attachments: List<FileAsset>
 ) {
     val clipboardManager = LocalClipboardManager.current
     val isQuestion = msg.type == ChatItemType.Question
@@ -913,17 +871,9 @@ private fun ChatBubble(
                         MessageContentType.Markdown -> {
                             if (msg.content.isNotBlank()) {
                                 MarkdownMessage(
-                                    msg.content,
-                                    messageId = msg.id,
-                                    chunkFlow = remember(msg.id, markdownStreamChunks) {
-                                        markdownStreamChunks
-                                            .filter { it.messageId == msg.id }
-                                            .map { it.content }
-                                    },
-                                    compactLayout = compactLayout,
-                                    cachedState = cachedMarkdownState
-                                        ?.takeIf { it.content == msg.content }
-                                        ?.state
+                                    markdown = msg.content,
+                                    document = msg.markdownDocument,
+                                    compactLayout = compactLayout
                                 )
                             } else if (msg.reasoningContent.isNotBlank()) {
                                 SelectionContainer {
@@ -992,12 +942,6 @@ private fun ChatBubble(
         }
     }
 }
-
-private data class CachedMarkdownState(
-    val content: String,
-    val state: State.Success
-)
-
 
 @Composable
 private fun MessageAttachments(attachments: List<FileAsset>) {

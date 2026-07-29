@@ -65,11 +65,6 @@ data class ChatScrollPosition(
     val hasSavedPosition: Boolean = false
 )
 
-data class MarkdownStreamChunk(
-    val messageId: String,
-    val content: String
-)
-
 enum class AssistantActivity { Thinking, Searching, CheckingWeather, UsingTool }
 
 class AIChatViewModel(
@@ -92,8 +87,6 @@ class AIChatViewModel(
 
     private val _toastEvents = MutableSharedFlow<String>()
     val toastEvents: SharedFlow<String> = _toastEvents.asSharedFlow()
-    private val _markdownStreamChunks = MutableSharedFlow<MarkdownStreamChunk>()
-    val markdownStreamChunks: SharedFlow<MarkdownStreamChunk> = _markdownStreamChunks.asSharedFlow()
 
     private var streamJob: Job? = null
     private var shouldStopStream = false
@@ -376,7 +369,6 @@ class AIChatViewModel(
                             isLoading = false
                         )
                         updateMessageInState(assistantMsg)
-                        _markdownStreamChunks.emit(MarkdownStreamChunk(assistantMsg.id, content))
                     }
                     },
                     onReasoning = { reasoningContent ->
@@ -409,7 +401,6 @@ class AIChatViewModel(
                                 isLoading = false
                             )
                             updateMessageInState(assistantMsg)
-                            _markdownStreamChunks.emit(MarkdownStreamChunk(assistantMsg.id, content))
                         }
                         },
                         onReasoning = { reasoningContent ->
@@ -644,7 +635,6 @@ class AIChatViewModel(
                                     isLoading = false
                                 )
                                 updateMessageInState(assistantMsg)
-                                _markdownStreamChunks.emit(MarkdownStreamChunk(assistantMsg.id, chunk.content))
                             }
                             if (chunk.isDone) {
                                 streamCompleted = true

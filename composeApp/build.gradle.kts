@@ -1,7 +1,6 @@
 @file:OptIn(ExperimentalKotlinGradlePluginApi::class)
 
 import org.jetbrains.compose.desktop.application.dsl.TargetFormat
-import org.gradle.jvm.toolchain.JavaLanguageVersion
 import org.jetbrains.kotlin.gradle.ExperimentalKotlinGradlePluginApi
 import org.jetbrains.kotlin.gradle.ExperimentalWasmDsl
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
@@ -36,11 +35,7 @@ kotlin {
         }
     }
     
-    jvm {
-        compilerOptions {
-            jvmTarget.set(JvmTarget.JVM_21)
-        }
-    }
+    jvm()
     /*
     js {
         browser()
@@ -99,9 +94,6 @@ kotlin {
             implementation(project(":feature-user"))
             implementation(libs.landscapist.placeholder)
             implementation(libs.composeIcons.feather)
-            implementation(libs.multiplatform.markdown.renderer.m3)
-
-
             // Multiplatform
 
             implementation(libs.decompose)
@@ -196,15 +188,9 @@ dependencies {
     debugImplementation(compose.uiTooling)
 }
 
-val desktopJavaLauncher = javaToolchains.launcherFor {
-    languageVersion.set(JavaLanguageVersion.of(21))
-}
-
 compose.desktop {
     application {
         mainClass = "ai.fatai.MainKt"
-        // Markdown Renderer 0.43's JVM artifact is compiled for Java 21.
-        javaHome = desktopJavaLauncher.get().metadata.installationPath.asFile.absolutePath
 
         nativeDistributions {
             targetFormats(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.Deb)
