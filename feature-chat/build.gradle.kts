@@ -16,9 +16,6 @@ kotlin {
             implementation(project(":feature-files"))
             implementation(project(":feature-user"))
         }
-        commonTest.dependencies {
-            implementation(libs.kotlin.test)
-        }
     }
 }
 
