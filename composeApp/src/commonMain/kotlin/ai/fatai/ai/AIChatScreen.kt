@@ -959,9 +959,11 @@ private fun MessageAttachments(attachments: List<FileAsset>) {
                         .heightIn(max = 280.dp)
                         .clip(RoundedCornerShape(10.dp))
                         .background(MaterialTheme.colorScheme.surfaceVariant)
+                        .clickable { openFileWithSystemApplication(asset.localPath, asset.mimeType) }
                 )
             } else {
                 Card(
+                    modifier = Modifier.clickable { openFileWithSystemApplication(asset.localPath, asset.mimeType) },
                     shape = RoundedCornerShape(10.dp),
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
                 ) {
@@ -1040,7 +1042,10 @@ private fun ChatInputBar(
                 modifier = Modifier.padding(bottom = 6.dp)
             ) {
                 items(attachments, key = { it.id }) { asset ->
-                    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)) {
+                    Card(
+                        modifier = Modifier.clickable { openFileWithSystemApplication(asset.localPath, asset.mimeType) },
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
+                    ) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
                             modifier = Modifier.padding(start = 8.dp, end = 2.dp)
