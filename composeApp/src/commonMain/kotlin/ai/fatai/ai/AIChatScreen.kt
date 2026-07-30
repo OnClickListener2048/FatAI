@@ -45,6 +45,7 @@ import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -99,6 +100,7 @@ import fatai.composeapp.generated.resources.add_key
 import fatai.composeapp.generated.resources.analyze_attached_file
 import fatai.composeapp.generated.resources.archive
 import fatai.composeapp.generated.resources.attach_file
+import fatai.composeapp.generated.resources.back_to_bottom
 import fatai.composeapp.generated.resources.cancel
 import fatai.composeapp.generated.resources.checking_weather
 import fatai.composeapp.generated.resources.continue_generation
@@ -746,14 +748,17 @@ private fun ChatMessagesArea(
     modifier: Modifier = Modifier
 ) {
     val conversationId = messages.firstOrNull()?.conversationId
+    // The list also contains one spacer before and after the messages.
+    val lastListItemIndex = messages.size + 1
     val restoredIndex = scrollPosition.firstVisibleItemIndex
-        .coerceIn(0, (messages.lastIndex).coerceAtLeast(0))
+        .coerceIn(0, lastListItemIndex)
     val restoredOffset = scrollPosition.firstVisibleItemScrollOffset.coerceAtLeast(0)
     val canRestorePosition =
         scrollPosition.hasSavedPosition && scrollPosition.conversationId == conversationId
     val listState = remember(conversationId) {
         LazyListState(restoredIndex, restoredOffset)
     }
+    val scrollScope = rememberCoroutineScope()
     var hasInitializedPosition by remember(conversationId) { mutableStateOf(false) }
 
     DisposableEffect(listState, conversationId) {
@@ -772,23 +777,25 @@ private fun ChatMessagesArea(
         if (!hasInitializedPosition) {
             hasInitializedPosition = true
             if (!canRestorePosition && messages.isNotEmpty()) {
-                listState.scrollToItem(messages.lastIndex, Int.MAX_VALUE)
+                listState.scrollToItem(lastListItemIndex, Int.MAX_VALUE)
             }
         } else if (isStreaming && messages.isNotEmpty()) {
             // A streaming response can become taller than the viewport. Scroll to the end of
             // its item (instead of only its start) after every new chunk so the newest text
             // remains visible. Using an immediate scroll prevents high-frequency chunks from
             // continually cancelling and restarting scroll animations.
-            listState.scrollToItem(messages.lastIndex, Int.MAX_VALUE)
+            listState.scrollToItem(lastListItemIndex, Int.MAX_VALUE)
         } else if (
             !isStreaming &&
             messages.isNotEmpty() &&
             (listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index
-                ?: -1) >= messages.lastIndex - 1
+                ?: -1) >= lastListItemIndex - 1
         ) {
-            listState.animateScrollToItem(messages.lastIndex, Int.MAX_VALUE)
+            listState.animateScrollToItem(lastListItemIndex, Int.MAX_VALUE)
         }
     }
+
+    val showBackToBottomButton = listState.firstVisibleItemIndex < lastListItemIndex - 3
 
     BoxWithConstraints(modifier = modifier.fillMaxWidth()) {
         val compactLayout = maxWidth < 600.dp
@@ -809,6 +816,29 @@ private fun ChatMessagesArea(
                 )
             }
             item { Spacer(Modifier.height(4.dp)) }
+        }
+        PlatformListScrollbar(
+            state = listState,
+            modifier = Modifier
+                .align(Alignment.CenterEnd)
+                .fillMaxHeight()
+                .padding(vertical = 8.dp)
+        )
+        if (showBackToBottomButton) {
+            FloatingActionButton(
+                onClick = {
+                    scrollScope.launch {
+                        listState.animateScrollToItem(lastListItemIndex, Int.MAX_VALUE)
+                    }
+                },
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(end = if (compactLayout) 16.dp else 24.dp, bottom = 16.dp),
+                containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                contentColor = MaterialTheme.colorScheme.onSecondaryContainer
+            ) {
+                Icon(FeatherIcons.ChevronDown, stringResource(Res.string.back_to_bottom))
+            }
         }
     }
 }
