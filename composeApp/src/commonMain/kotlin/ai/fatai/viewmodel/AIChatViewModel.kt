@@ -280,7 +280,7 @@ class AIChatViewModel(
         _state.value = _state.value.copy(attachments = fileAssetRepository.pendingForConversation(conversationId))
     }
 
-    fun sendMessage() {
+    fun sendMessage(analyzeAttachedFilePrompt: String) {
         val text = _state.value.inputText.trim()
         val pendingAttachments = _state.value.attachments
         if ((text.isBlank() && pendingAttachments.isEmpty()) || _state.value.isStreaming) return
@@ -302,7 +302,7 @@ class AIChatViewModel(
 
         val userMsg = chatRepository.insertMessage(
             conversationId = conversationId,
-            content = text.ifBlank { "Please analyze the attached file." },
+            content = text.ifBlank { analyzeAttachedFilePrompt },
             type = ChatItemType.Question,
             contentType = MessageContentType.Text
         )
@@ -319,10 +319,14 @@ class AIChatViewModel(
             messageAttachments = _state.value.messageAttachments + (userMsg.id to pendingAttachments)
         )
         loadConversations()
-        streamChat(conversationId, messages)
+        streamChat(conversationId, messages, pendingAttachments)
     }
 
-    private fun streamChat(conversationId: String, messages: List<ChatItem>) {
+    private fun streamChat(
+        conversationId: String,
+        messages: List<ChatItem>,
+        attachments: List<FileAsset> = emptyList()
+    ) {
         val config = _state.value.activeConfig ?: return
         @OptIn(ExperimentalUuidApi::class, kotlin.time.ExperimentalTime::class)
         var assistantMsg = ChatItem(
@@ -358,8 +362,32 @@ class AIChatViewModel(
                         history = history
                     )
                 )
+                val documentExecutions = if (attachments.isEmpty()) {
+                    emptyList()
+                } else {
+                    _state.value = _state.value.copy(assistantActivity = AssistantActivity.UsingTool)
+                    attachments.map { attachment ->
+                        toolRegistry.execute(
+                            ToolCall(
+                                "docling_document_read",
+                                mapOf(
+                                    "local_path" to attachment.localPath,
+                                    "display_name" to attachment.displayName,
+                                    "mime_type" to attachment.mimeType
+                                )
+                            )
+                        )
+                    }.also {
+                        _state.value = _state.value.copy(assistantActivity = AssistantActivity.Thinking)
+                    }
+                }
+                val promptWithDocuments = if (documentExecutions.isEmpty()) {
+                    prompt
+                } else {
+                    prompt + ChatMessage(role = "system", content = formatToolResults(documentExecutions))
+                }
                 val toolCalls = collectModelResponse(
-                    prompt = prompt,
+                    prompt = promptWithDocuments,
                     config = config,
                     includeTools = true,
                     onContent = { content ->
@@ -388,7 +416,7 @@ class AIChatViewModel(
                     }
                     _state.value = _state.value.copy(assistantActivity = AssistantActivity.Thinking)
                     collectModelResponse(
-                        prompt = prompt + ChatMessage(
+                        prompt = promptWithDocuments + ChatMessage(
                             role = "system",
                             content = formatToolResults(toolResults)
                         ),
@@ -413,7 +441,10 @@ class AIChatViewModel(
                         }
                         }
                     )
-                    assistantMsg = assistantMsg.withToolSources(toolResults)
+                    assistantMsg = assistantMsg.withToolSources(documentExecutions + toolResults)
+                    updateMessageInState(assistantMsg)
+                } else if (documentExecutions.isNotEmpty()) {
+                    assistantMsg = assistantMsg.withToolSources(documentExecutions)
                     updateMessageInState(assistantMsg)
                 }
                 if (!shouldStopStream) {
@@ -573,7 +604,7 @@ class AIChatViewModel(
             messages = filteredMsgs,
             isLoading = false
         )
-        streamChat(convId, filteredMsgs)
+        streamChat(convId, filteredMsgs, _state.value.messageAttachments[lastQuestion.id].orEmpty())
     }
 
     fun continueGeneration() {

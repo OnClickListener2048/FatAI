@@ -28,6 +28,7 @@ import ai.fatai.feature.user.UserRepository
 import ai.fatai.feature.tools.DefaultTools
 import ai.fatai.feature.tools.DefaultToolProviderAdapters
 import ai.fatai.feature.tools.ToolProviderAdapterRegistry
+import ai.fatai.feature.tools.ToolExecutionPolicy
 import ai.fatai.feature.tools.ToolRegistry
 import org.koin.core.context.startKoin
 import org.koin.core.logger.Level
@@ -71,7 +72,9 @@ val sharedModule = module {
     single { PromptTemplateRepository(get(), get()) }
     single { FileAssetRepository(get(), get()) }
     single { SettingsRepository(get(), get()) }
-    single { ToolRegistry(DefaultTools.all(get())) }
+    // Docling conversion can produce richer Markdown than lightweight tools, while the registry
+    // still imposes a strict prompt-sized bound on every tool result.
+    single { ToolRegistry(DefaultTools.all(get()), ToolExecutionPolicy(maxOutputCharacters = 24_000)) }
     single { ToolProviderAdapterRegistry(DefaultToolProviderAdapters.all()) }
 
     single<ChatProvider> {

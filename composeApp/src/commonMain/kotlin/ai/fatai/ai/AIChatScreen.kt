@@ -96,6 +96,7 @@ import fatai.composeapp.generated.resources.add_api_key
 import fatai.composeapp.generated.resources.add_api_key_description
 import fatai.composeapp.generated.resources.add_api_key_in_settings
 import fatai.composeapp.generated.resources.add_key
+import fatai.composeapp.generated.resources.analyze_attached_file
 import fatai.composeapp.generated.resources.archive
 import fatai.composeapp.generated.resources.attach_file
 import fatai.composeapp.generated.resources.cancel
@@ -162,6 +163,7 @@ class AIChatScreen {
         val scope = rememberCoroutineScope()
         val snackbarHostState = remember { SnackbarHostState() }
         val attachFileTitle = stringResource(Res.string.attach_file)
+        val analyzeAttachedFilePrompt = stringResource(Res.string.analyze_attached_file)
         val filePicker = rememberFilePickerLauncher(
             type = FileKitType.File(
                 listOf(
@@ -295,7 +297,7 @@ class AIChatScreen {
                         ChatInputBar(
                             text = state.inputText,
                             onTextChange = { viewModel.updateInputText(it) },
-                            onSend = { viewModel.sendMessage() },
+                            onSend = { viewModel.sendMessage(analyzeAttachedFilePrompt) },
                             isStreaming = state.isStreaming,
                             onStop = { viewModel.stopGeneration() },
                             onRegenerate = { viewModel.regenerate() },

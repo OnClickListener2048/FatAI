@@ -11,8 +11,15 @@ import io.ktor.server.routing.post
 import io.ktor.server.routing.routing
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import org.slf4j.LoggerFactory
 
-fun Application.configureToolRoutes(searchService: WebSearchService, weatherService: WeatherService) {
+private val logger = LoggerFactory.getLogger("ai.fatai.tools.ToolRoutes")
+
+fun Application.configureToolRoutes(
+    searchService: WebSearchService,
+    weatherService: WeatherService,
+    doclingDocumentService: DoclingDocumentService
+) {
     val json = Json { ignoreUnknownKeys = true; explicitNulls = false }
 
     routing {
@@ -73,6 +80,49 @@ fun Application.configureToolRoutes(searchService: WebSearchService, weatherServ
                 call.respondJson(
                     json,
                     ApiError("WEATHER_UNAVAILABLE", exception.message.orEmpty()),
+                    HttpStatusCode.BadGateway
+                )
+            }
+        }
+
+        post("/v1/tools/document-read") {
+            val request = try {
+                json.decodeFromString<DoclingDocumentReadRequest>(call.receiveText())
+            } catch (_: Exception) {
+                logger.warn("Document read rejected: invalid JSON request")
+                call.respondJson(
+                    json,
+                    ApiError("INVALID_REQUEST", "Request body must be valid JSON."),
+                    HttpStatusCode.BadRequest
+                )
+                return@post
+            }
+
+            try {
+                val result = doclingDocumentService.read(request)
+                logger.info(
+                    "Document read returned to client: file={}, markdownChars={}",
+                    result.displayName,
+                    result.markdown.length
+                )
+                call.respondJson(json, result)
+            } catch (exception: IllegalArgumentException) {
+                logger.warn("Document read rejected: file={}, message={}", request.displayName, exception.message)
+                call.respondJson(
+                    json,
+                    ApiError("INVALID_REQUEST", exception.message.orEmpty()),
+                    HttpStatusCode.BadRequest
+                )
+            } catch (exception: DoclingDocumentException) {
+                logger.warn(
+                    "Document read failed: file={}, code={}, message={}",
+                    request.displayName,
+                    exception.code,
+                    exception.message
+                )
+                call.respondJson(
+                    json,
+                    ApiError(exception.code, exception.message.orEmpty()),
                     HttpStatusCode.BadGateway
                 )
             }

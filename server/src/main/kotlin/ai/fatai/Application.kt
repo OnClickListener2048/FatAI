@@ -2,6 +2,7 @@ package ai.fatai
 
 import ai.fatai.tools.DuckDuckGoSearchProvider
 import ai.fatai.tools.DuckDuckGoHtmlSearchClient
+import ai.fatai.tools.DoclingDocumentService
 import ai.fatai.tools.TimeAndDateWeatherProvider
 import ai.fatai.tools.WeatherService
 import ai.fatai.tools.WebSearchService
@@ -33,7 +34,8 @@ fun Application.module() {
     val htmlSearchClient = DuckDuckGoHtmlSearchClient(httpClient)
     configureToolRoutes(
         searchService = WebSearchService(DuckDuckGoSearchProvider(htmlSearchClient)),
-        weatherService = WeatherService(TimeAndDateWeatherProvider(htmlSearchClient))
+        weatherService = WeatherService(TimeAndDateWeatherProvider(htmlSearchClient)),
+        doclingDocumentService = DoclingDocumentService(httpClient)
     )
     routing {
         get("/") {
