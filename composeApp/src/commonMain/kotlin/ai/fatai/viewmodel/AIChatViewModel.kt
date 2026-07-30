@@ -355,11 +355,13 @@ class AIChatViewModel(
                     ChatMessage(role = if (it.type == ChatItemType.Question) "user" else "assistant", content = it.content)
                 }
 
+                val isAttachmentAnalysis = attachments.isNotEmpty()
                 val prompt = contextEngine.build(
                     ContextRequest(
-                        workspace = workspaceRepository.getById(_state.value.currentWorkspaceId),
-                        conversationId = conversationId,
-                        history = history
+                        workspace = if (isAttachmentAnalysis) null else workspaceRepository.getById(_state.value.currentWorkspaceId),
+                        conversationId = if (isAttachmentAnalysis) null else conversationId,
+                        history = if (isAttachmentAnalysis) history.takeLast(1) else history,
+                        includeContextualReferences = !isAttachmentAnalysis
                     )
                 )
                 val documentExecutions = if (attachments.isEmpty()) {

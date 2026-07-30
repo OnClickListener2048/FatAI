@@ -12,7 +12,9 @@ data class ContextRequest(
     val workspace: Workspace?,
     val conversationId: String?,
     val history: List<ChatMessage>,
-    val responseLanguageTag: String = currentLanguageTag()
+    val responseLanguageTag: String = currentLanguageTag(),
+    /** Excludes templates, workspace instructions, memories, and file manifests for isolated work. */
+    val includeContextualReferences: Boolean = true
 )
 
 interface PromptProvider {
@@ -90,7 +92,7 @@ class TemplatePromptProvider(
     override val order = 20
 
     override fun provide(request: ContextRequest): List<ChatMessage> =
-        templates.enabledFor(request.workspace?.id).map {
+        if (!request.includeContextualReferences) emptyList() else templates.enabledFor(request.workspace?.id).map {
             ChatMessage(
                 role = "system",
                 content = "User-configured application instruction (${it.name}):\n${it.content}"
@@ -102,6 +104,7 @@ class WorkspacePromptProvider : PromptProvider {
     override val order = 30
 
     override fun provide(request: ContextRequest): List<ChatMessage> {
+        if (!request.includeContextualReferences) return emptyList()
         val workspace = request.workspace ?: return emptyList()
         val description = buildString {
             append("Current workspace: ${workspace.name}.")
@@ -119,6 +122,7 @@ class MemoryPromptProvider(
     override val order = 40
 
     override fun provide(request: ContextRequest): List<ChatMessage> {
+        if (!request.includeContextualReferences) return emptyList()
         val entries = memories.recall(request.workspace?.id, request.conversationId)
         if (entries.isEmpty()) return emptyList()
         val content = entries.joinToString(separator = "\n") { "- ${it.content}" }
@@ -137,6 +141,7 @@ class FilePromptProvider(
     override val order = 50
 
     override fun provide(request: ContextRequest): List<ChatMessage> {
+        if (!request.includeContextualReferences) return emptyList()
         val conversationId = request.conversationId ?: return emptyList()
         val assets = files.forConversation(conversationId)
         if (assets.isEmpty()) return emptyList()
