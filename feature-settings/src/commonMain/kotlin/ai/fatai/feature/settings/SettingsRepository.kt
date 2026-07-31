@@ -14,8 +14,15 @@ class SettingsRepository(private val queries: WatsonQueries, private val current
     val themeMode: StateFlow<ThemeMode> = _themeMode.asStateFlow()
 
     fun setThemeMode(mode: ThemeMode) {
-        queries.upsertAppSetting(currentUser.currentUserId, THEME_MODE_KEY, mode.name, now())
+        putValue(THEME_MODE_KEY, mode.name)
         _themeMode.value = mode
+    }
+
+    fun getValue(key: String): String? =
+        queries.selectAppSetting(currentUser.currentUserId, key).executeAsOneOrNull()?.value_
+
+    fun putValue(key: String, value: String) {
+        queries.upsertAppSetting(currentUser.currentUserId, key, value, now())
     }
 
     private fun readThemeMode(): ThemeMode =

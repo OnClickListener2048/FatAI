@@ -2,6 +2,7 @@ package ai.fatai.feature.prompt
 
 import ai.fatai.database.sqldelight.WatsonQueries
 import ai.fatai.feature.user.CurrentUserProvider
+import ai.fatai.feature.model.FatAiServerSync
 import kotlin.time.Clock
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
@@ -18,7 +19,11 @@ data class PromptTemplate(
     val updatedAt: Long
 )
 
-class PromptTemplateRepository(private val queries: WatsonQueries, private val currentUser: CurrentUserProvider) {
+class PromptTemplateRepository(
+    private val queries: WatsonQueries,
+    private val currentUser: CurrentUserProvider,
+    private val serverSync: FatAiServerSync? = null
+) {
     @OptIn(kotlin.time.ExperimentalTime::class)
     private fun now() = Clock.System.now().toEpochMilliseconds()
 
@@ -40,6 +45,14 @@ class PromptTemplateRepository(private val queries: WatsonQueries, private val c
             isEnabled = 1L,
             createdAt = time,
             updatedAt = time
+        )
+        serverSync?.syncPrompt(
+            id = template.id,
+            name = template.name,
+            content = template.content,
+            workspaceId = template.workspaceId,
+            priority = template.priority,
+            isEnabled = template.isEnabled
         )
         return template
     }

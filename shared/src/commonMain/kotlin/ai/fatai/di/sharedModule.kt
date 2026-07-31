@@ -4,9 +4,6 @@ import ai.fatai.database.Database
 import ai.fatai.network.provideHttpClient
 import ai.fatai.repo.ChatRepository
 import ai.fatai.repo.ApiKeyRepository
-import ai.fatai.chat.OpenAICompatibleProvider
-import ai.fatai.chat.ChatProvider
-import ai.fatai.chat.ProviderType
 import ai.fatai.core.context.ContextEngine
 import ai.fatai.core.context.FilePromptProvider
 import ai.fatai.core.context.HistoryPromptProvider
@@ -18,7 +15,8 @@ import ai.fatai.feature.files.FileAssetRepository
 import ai.fatai.feature.memory.MemoryRepository
 import ai.fatai.feature.memory.ConversationMemoryService
 import ai.fatai.feature.memory.UserMemoryExtractionService
-import ai.fatai.feature.model.ChatProviderModelGateway
+import ai.fatai.feature.model.FatAiServerModelGateway
+import ai.fatai.feature.model.FatAiServerSync
 import ai.fatai.feature.model.ModelGateway
 import ai.fatai.feature.prompt.PromptTemplateRepository
 import ai.fatai.feature.workspace.WorkspaceRepository
@@ -68,8 +66,8 @@ val sharedModule = module {
     }
 
     single { WorkspaceRepository(get(), get()) }
-    single { MemoryRepository(get(), get()) }
-    single { PromptTemplateRepository(get(), get()) }
+    single { MemoryRepository(get(), get(), get()) }
+    single { PromptTemplateRepository(get(), get(), get()) }
     single { FileAssetRepository(get(), get()) }
     single { SettingsRepository(get(), get()) }
     // Docling conversion can produce richer Markdown than lightweight tools, while the registry
@@ -77,12 +75,8 @@ val sharedModule = module {
     single { ToolRegistry(DefaultTools.all(get()), ToolExecutionPolicy(maxOutputCharacters = 24_000)) }
     single { ToolProviderAdapterRegistry(DefaultToolProviderAdapters.all()) }
 
-    single<ChatProvider> {
-        println("OpenAICompatibleProvider")
-        OpenAICompatibleProvider(ProviderType.OpenAI, get())
-    }
-
-    single<ModelGateway> { ChatProviderModelGateway(get()) }
+    single<ModelGateway> { FatAiServerModelGateway(get()) }
+    single { FatAiServerSync(get(), get(), get()) }
     single { ConversationMemoryService(get(), get()) }
     single { UserMemoryExtractionService(get(), get()) }
 

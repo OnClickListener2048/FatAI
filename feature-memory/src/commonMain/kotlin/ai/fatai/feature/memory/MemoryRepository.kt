@@ -2,6 +2,7 @@ package ai.fatai.feature.memory
 
 import ai.fatai.database.sqldelight.WatsonQueries
 import ai.fatai.feature.user.CurrentUserProvider
+import ai.fatai.feature.model.FatAiServerSync
 import kotlin.time.Clock
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
@@ -21,7 +22,11 @@ data class MemoryEntry(
     val updatedAt: Long
 )
 
-class MemoryRepository(private val queries: WatsonQueries, private val currentUser: CurrentUserProvider) {
+class MemoryRepository(
+    private val queries: WatsonQueries,
+    private val currentUser: CurrentUserProvider,
+    private val serverSync: FatAiServerSync? = null
+) {
     @OptIn(kotlin.time.ExperimentalTime::class)
     private fun now() = Clock.System.now().toEpochMilliseconds()
 
@@ -50,6 +55,14 @@ class MemoryRepository(private val queries: WatsonQueries, private val currentUs
             createdAt = time,
             updatedAt = time,
             isArchived = 0L
+        )
+        serverSync?.syncMemory(
+            id = entry.id,
+            scope = entry.scope.name,
+            content = entry.content,
+            workspaceId = entry.workspaceId,
+            conversationId = entry.conversationId,
+            kind = entry.kind.name
         )
         return entry
     }

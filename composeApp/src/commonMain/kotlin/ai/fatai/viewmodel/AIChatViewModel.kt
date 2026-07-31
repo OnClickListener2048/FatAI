@@ -21,6 +21,8 @@ import ai.fatai.chat.ProviderType
 import ai.fatai.core.context.ContextEngine
 import ai.fatai.core.context.ContextRequest
 import ai.fatai.feature.model.ModelGateway
+import ai.fatai.feature.model.DEFAULT_FAT_AI_SERVER_URL
+import ai.fatai.feature.model.FatAiServerSync
 import ai.fatai.feature.files.FileAsset
 import ai.fatai.feature.files.FileAssetRepository
 import ai.fatai.feature.memory.ConversationMemoryService
@@ -77,7 +79,8 @@ class AIChatViewModel(
     private val conversationMemoryService: ConversationMemoryService,
     private val userMemoryExtractionService: UserMemoryExtractionService,
     private val toolRegistry: ToolRegistry,
-    private val currentUser: CurrentUserProvider
+    private val currentUser: CurrentUserProvider,
+    private val serverSync: FatAiServerSync
 ) {
 
     private val screenModelScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
@@ -121,6 +124,9 @@ class AIChatViewModel(
             messageAttachments = emptyMap(),
             inputText = ""
         )
+        workspaceRepository.getAll().forEach { workspace ->
+            serverSync.syncWorkspace(workspace.id, workspace.name, workspace.systemPrompt)
+        }
         loadActiveConfig()
         selectedConversationId?.let(::selectConversation)
     }
@@ -150,6 +156,7 @@ class AIChatViewModel(
     fun createWorkspace(name: String, systemPrompt: String = "") {
         if (name.isBlank()) return
         val workspace = workspaceRepository.create(name, systemPrompt)
+        serverSync.syncWorkspace(workspace.id, workspace.name, workspace.systemPrompt)
         loadWorkspaces()
         selectWorkspace(workspace.id)
     }
@@ -171,14 +178,12 @@ class AIChatViewModel(
         val activeKey = apiKeyRepository.getActiveKey()
         _state.value = _state.value.copy(
             activeProvider = activeKey?.providerType ?: ProviderType.OpenAI,
-            activeConfig = activeKey?.let { key ->
-                ProviderConfig(
-                    apiKey = key.apiKey,
-                    baseUrl = key.baseUrl.ifBlank { key.providerType.defaultBaseUrl },
-                    model = key.model.ifBlank { key.providerType.defaultModel },
-                    providerType = key.providerType
-                )
-            }
+            activeConfig = ProviderConfig(
+                apiKey = "",
+                baseUrl = DEFAULT_FAT_AI_SERVER_URL,
+                model = activeKey?.model?.ifBlank { activeKey.providerType.defaultModel } ?: ProviderType.OpenAI.defaultModel,
+                providerType = activeKey?.providerType ?: ProviderType.OpenAI
+            )
         )
     }
 
@@ -191,8 +196,8 @@ class AIChatViewModel(
         _state.value = _state.value.copy(
             activeProvider = keyInfo.providerType,
             activeConfig = ProviderConfig(
-                apiKey = keyInfo.apiKey,
-                baseUrl = keyInfo.baseUrl.ifBlank { keyInfo.providerType.defaultBaseUrl },
+                apiKey = "",
+                baseUrl = DEFAULT_FAT_AI_SERVER_URL,
                 model = keyInfo.model.ifBlank { keyInfo.providerType.defaultModel },
                 providerType = keyInfo.providerType
             )
@@ -210,6 +215,13 @@ class AIChatViewModel(
             workspaceId = _state.value.currentWorkspaceId,
             providerType = provider,
             model = config.model
+        )
+        serverSync.syncConversation(
+            id = conversation.id,
+            workspaceId = conversation.workspaceId,
+            title = conversation.title,
+            providerType = conversation.providerType.name,
+            model = conversation.model
         )
         _state.value = _state.value.copy(
             currentConversationId = conversation.id,
@@ -298,6 +310,13 @@ class AIChatViewModel(
                 model = config.model
             )
             conversationId = conversation.id
+            serverSync.syncConversation(
+                id = conversation.id,
+                workspaceId = conversation.workspaceId,
+                title = conversation.title,
+                providerType = conversation.providerType.name,
+                model = conversation.model
+            )
         }
 
         val userMsg = chatRepository.insertMessage(
@@ -305,6 +324,13 @@ class AIChatViewModel(
             content = text.ifBlank { analyzeAttachedFilePrompt },
             type = ChatItemType.Question,
             contentType = MessageContentType.Text
+        )
+        serverSync.syncMessage(
+            id = userMsg.id,
+            conversationId = userMsg.conversationId,
+            role = "user",
+            content = userMsg.content,
+            contentType = userMsg.contentType.name
         )
         screenModelScope.launch {
             userMemoryExtractionService.rememberFromUserInput(userMsg.content, config)
@@ -551,7 +577,16 @@ class AIChatViewModel(
         assistantMsg: ChatItem,
         config: ProviderConfig
     ) {
-        chatRepository.insertMessage(conversationId, assistantMsg.content, ChatItemType.Answer)
+        chatRepository.insertMessage(conversationId, assistantMsg.content, ChatItemType.Answer).also { message ->
+            serverSync.syncMessage(
+                id = message.id,
+                conversationId = message.conversationId,
+                role = "assistant",
+                content = message.content,
+                contentType = message.contentType.name,
+                reasoningContent = assistantMsg.reasoningContent
+            )
+        }
         if (chatRepository.getMessageCount(conversationId) <= 2) {
             messages.firstOrNull { it.type == ChatItemType.Question }?.let { firstMsg ->
                 chatRepository.updateConversationTitle(conversationId, generateTitle(firstMsg.content))
