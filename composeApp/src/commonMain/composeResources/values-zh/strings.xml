@@ -49,6 +49,7 @@
     <string name="add_api_key_description">连接模型提供商后即可开始聊天。</string>
     <string name="user_account">用户账号</string>
     <string name="provider">提供商</string>
+    <string name="api_key_server_managed">密钥已安全保存到 FatAI 服务端</string>
     <string name="display_name">显示名称</string>
     <string name="api_key">API 密钥</string>
     <string name="base_url">基础 URL</string>

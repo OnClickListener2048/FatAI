@@ -62,7 +62,7 @@ val sharedModule = module {
 
     single {
         println("ApiKeyRepository")
-        ApiKeyRepository(get(), get())
+        ApiKeyRepository(get(), get(), get())
     }
 
     single { WorkspaceRepository(get(), get()) }
@@ -75,7 +75,7 @@ val sharedModule = module {
     single { ToolRegistry(DefaultTools.all(get()), ToolExecutionPolicy(maxOutputCharacters = 24_000)) }
     single { ToolProviderAdapterRegistry(DefaultToolProviderAdapters.all()) }
 
-    single<ModelGateway> { FatAiServerModelGateway(get()) }
+    single<ModelGateway> { FatAiServerModelGateway(get(), get()) }
     single { FatAiServerSync(get(), get(), get()) }
     single { ConversationMemoryService(get(), get()) }
     single { UserMemoryExtractionService(get(), get()) }

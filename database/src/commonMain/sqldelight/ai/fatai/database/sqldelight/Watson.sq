@@ -186,6 +186,9 @@ UPDATE ApiKey SET isActive = :isActive WHERE id = :id AND userId = :userId;
 deactivateAllApiKeys:
 UPDATE ApiKey SET isActive = 0 WHERE userId = :userId;
 
+clearApiKeySecret:
+UPDATE ApiKey SET apiKey = '' WHERE id = :id AND userId = :userId;
+
 deleteApiKey:
 DELETE FROM ApiKey WHERE id = :id AND userId = :userId;
 

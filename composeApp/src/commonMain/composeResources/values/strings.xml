@@ -49,6 +49,7 @@
     <string name="add_api_key_description">Connect a model provider to start chatting.</string>
     <string name="user_account">User account</string>
     <string name="provider">Provider</string>
+    <string name="api_key_server_managed">Key stored securely on your FatAI server</string>
     <string name="display_name">Display Name</string>
     <string name="api_key">API Key</string>
     <string name="base_url">Base URL</string>

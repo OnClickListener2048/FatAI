@@ -785,13 +785,6 @@ private fun ChatMessagesArea(
             // remains visible. Using an immediate scroll prevents high-frequency chunks from
             // continually cancelling and restarting scroll animations.
             listState.scrollToItem(lastListItemIndex, Int.MAX_VALUE)
-        } else if (
-            !isStreaming &&
-            messages.isNotEmpty() &&
-            (listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index
-                ?: -1) >= lastListItemIndex - 1
-        ) {
-            listState.animateScrollToItem(lastListItemIndex, Int.MAX_VALUE)
         }
     }
 
@@ -828,7 +821,9 @@ private fun ChatMessagesArea(
             FloatingActionButton(
                 onClick = {
                     scrollScope.launch {
-                        listState.animateScrollToItem(lastListItemIndex, Int.MAX_VALUE)
+                        // This is a quick-jump control. An animated scroll reaches the trailing
+                        // spacer first, then snaps again when the button disappears at the bottom.
+                        listState.scrollToItem(lastListItemIndex, Int.MAX_VALUE)
                     }
                 },
                 modifier = Modifier

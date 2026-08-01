@@ -175,11 +175,15 @@ class AISettingsScreen {
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                     Text(
-                                        stringResource(
-                                            Res.string.api_key_preview,
-                                            key.apiKey.take(8),
-                                            key.apiKey.takeLast(4)
-                                        ),
+                                        if (key.apiKey.isBlank()) {
+                                            stringResource(Res.string.api_key_server_managed)
+                                        } else {
+                                            stringResource(
+                                                Res.string.api_key_preview,
+                                                key.apiKey.take(8),
+                                                key.apiKey.takeLast(4)
+                                            )
+                                        },
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )

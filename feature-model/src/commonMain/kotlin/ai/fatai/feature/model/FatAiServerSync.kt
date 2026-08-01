@@ -2,8 +2,10 @@ package ai.fatai.feature.model
 
 import ai.fatai.feature.settings.SettingsRepository
 import ai.fatai.feature.user.CurrentUserProvider
+import ai.fatai.chat.ProviderConfig
 import io.ktor.client.HttpClient
 import io.ktor.client.request.header
+import io.ktor.client.request.delete
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.bodyAsText
@@ -11,6 +13,7 @@ import io.ktor.http.ContentType
 import io.ktor.http.contentType
 import io.ktor.http.isSuccess
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -35,6 +38,7 @@ class FatAiServerSync(
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val syncMutex = Mutex()
+    private val pendingModelUploads = mutableMapOf<String, CompletableDeferred<Unit>>()
     private val _lastError = MutableStateFlow<String?>(null)
     val lastError: StateFlow<String?> = _lastError.asStateFlow()
 
@@ -58,14 +62,60 @@ class FatAiServerSync(
         post("/v1/prompt-templates", PromptPayload(id, name, content, workspaceId, priority, isEnabled))
     }
 
-    private fun enqueue(block: suspend () -> Unit) {
+    fun syncModelConfiguration(config: ProviderConfig, isActive: Boolean = true) {
+        val configurationId = requireNotNull(config.configurationId) { "A local model configuration is required." }
+        val completion = CompletableDeferred<Unit>()
+        pendingModelUploads[configurationId] = completion
+        enqueue(
+            block = { upsertModelConfiguration(config, isActive) },
+            onSuccess = { completion.complete(Unit) },
+            onFailure = { completion.completeExceptionally(it) }
+        )
+    }
+
+    fun activateModelConfiguration(id: String) = enqueue {
+        post("/v1/model-configurations/$id/activate", EmptyPayload)
+    }
+
+    fun deleteModelConfiguration(id: String) = enqueue {
+        delete("/v1/model-configurations/$id")
+    }
+
+    suspend fun upsertModelConfiguration(config: ProviderConfig, isActive: Boolean = true) {
+        val configurationId = requireNotNull(config.configurationId) { "A local model configuration is required." }
+        require(config.apiKey.isNotBlank()) { "The selected model configuration has no API key." }
+        post(
+            "/v1/model-configurations",
+            ModelConfigurationPayload(
+                id = configurationId,
+                name = config.configurationName ?: config.providerType.displayName,
+                providerType = config.providerType.name,
+                apiKey = config.apiKey,
+                baseUrl = config.baseUrl,
+                model = config.model,
+                isActive = isActive
+            )
+        )
+    }
+
+    suspend fun awaitModelConfiguration(id: String?) {
+        id?.let { pendingModelUploads.remove(it)?.await() }
+    }
+
+    private fun enqueue(
+        onSuccess: (() -> Unit)? = null,
+        onFailure: ((Exception) -> Unit)? = null,
+        block: suspend () -> Unit
+    ) {
         scope.launch {
             syncMutex.withLock {
                 try {
                     block()
                     _lastError.value = null
+                    onSuccess?.invoke()
                 } catch (error: Exception) {
                     _lastError.value = error.message ?: "FatAI server synchronization failed."
+                    onFailure?.invoke(error)
                 }
             }
         }
@@ -83,6 +133,8 @@ class FatAiServerSync(
                     is MessagePayload -> json.encodeToString(body)
                     is MemoryPayload -> json.encodeToString(body)
                     is PromptPayload -> json.encodeToString(body)
+                    is ModelConfigurationPayload -> json.encodeToString(body)
+                    EmptyPayload -> "{}"
                     else -> error("Unsupported sync payload")
                 }
             )
@@ -90,8 +142,18 @@ class FatAiServerSync(
         if (!response.status.isSuccess()) error(response.bodyAsText().ifBlank { "FatAI server returned ${response.status.value}." })
     }
 
+    private suspend fun delete(path: String) {
+        val token = accessToken()
+        val response = client.delete("${serverUrl.trimEnd('/')}$path") {
+            header("Authorization", "Bearer $token")
+        }
+        if (!response.status.isSuccess() && response.status.value != 404) {
+            error(response.bodyAsText().ifBlank { "FatAI server returned ${response.status.value}." })
+        }
+    }
+
     @OptIn(ExperimentalUuidApi::class)
-    private suspend fun accessToken(): String {
+    suspend fun accessToken(): String {
         val deviceId = settings.getValue(DEVICE_ID_KEY) ?: Uuid.random().toString().also {
             settings.putValue(DEVICE_ID_KEY, it)
         }
@@ -158,3 +220,16 @@ private data class PromptPayload(
     val priority: Long,
     @SerialName("is_enabled") val isEnabled: Boolean
 )
+
+@Serializable
+private data class ModelConfigurationPayload(
+    val id: String,
+    val name: String,
+    @SerialName("provider_type") val providerType: String,
+    @SerialName("api_key") val apiKey: String,
+    @SerialName("base_url") val baseUrl: String,
+    val model: String,
+    @SerialName("is_active") val isActive: Boolean
+)
+
+private data object EmptyPayload

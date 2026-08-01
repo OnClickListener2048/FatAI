@@ -178,12 +178,16 @@ class AIChatViewModel(
         val activeKey = apiKeyRepository.getActiveKey()
         _state.value = _state.value.copy(
             activeProvider = activeKey?.providerType ?: ProviderType.OpenAI,
-            activeConfig = ProviderConfig(
-                apiKey = "",
-                baseUrl = DEFAULT_FAT_AI_SERVER_URL,
-                model = activeKey?.model?.ifBlank { activeKey.providerType.defaultModel } ?: ProviderType.OpenAI.defaultModel,
-                providerType = activeKey?.providerType ?: ProviderType.OpenAI
-            )
+            activeConfig = activeKey?.let { key ->
+                ProviderConfig(
+                    apiKey = key.apiKey,
+                    baseUrl = key.baseUrl,
+                    model = key.model.ifBlank { key.providerType.defaultModel },
+                    configurationId = key.id,
+                    configurationName = key.name,
+                    providerType = key.providerType
+                )
+            }
         )
     }
 
@@ -196,9 +200,11 @@ class AIChatViewModel(
         _state.value = _state.value.copy(
             activeProvider = keyInfo.providerType,
             activeConfig = ProviderConfig(
-                apiKey = "",
-                baseUrl = DEFAULT_FAT_AI_SERVER_URL,
+                apiKey = keyInfo.apiKey,
+                baseUrl = keyInfo.baseUrl,
                 model = keyInfo.model.ifBlank { keyInfo.providerType.defaultModel },
+                configurationId = keyInfo.id,
+                configurationName = keyInfo.name,
                 providerType = keyInfo.providerType
             )
         )
