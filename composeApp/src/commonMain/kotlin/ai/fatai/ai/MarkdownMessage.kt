@@ -9,9 +9,12 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -28,6 +31,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
@@ -195,15 +200,17 @@ private fun MarkdownTable(
             columns = columns,
             cellWidth = cellWidth,
             bodyStyle = bodyStyle.copy(fontWeight = FontWeight.SemiBold),
-            background = MaterialTheme.colorScheme.surfaceVariant
+            background = MaterialTheme.colorScheme.surfaceVariant,
+            drawBottomDivider = true
         )
-        table.rows.forEach { row ->
+        table.rows.forEachIndexed { index, row ->
             MarkdownTableRow(
                 cells = row,
                 columns = columns,
                 cellWidth = cellWidth,
                 bodyStyle = bodyStyle,
-                background = Color.Transparent
+                background = Color.Transparent,
+                drawBottomDivider = index < table.rows.lastIndex
             )
         }
     }
@@ -215,20 +222,41 @@ private fun MarkdownTableRow(
     columns: Int,
     cellWidth: androidx.compose.ui.unit.Dp,
     bodyStyle: androidx.compose.ui.text.TextStyle,
-    background: Color
+    background: Color,
+    drawBottomDivider: Boolean
 ) {
-    Row {
+    val dividerColor = MaterialTheme.colorScheme.outlineVariant
+    Row(modifier = Modifier.height(IntrinsicSize.Min)) {
         repeat(columns) { index ->
             MarkdownRichText(
                 inlines = cells.getOrElse(index) { emptyList() },
                 bodyStyle = bodyStyle,
                 modifier = Modifier
                     .widthIn(min = cellWidth, max = cellWidth)
-                    .border(0.5.dp, MaterialTheme.colorScheme.outlineVariant)
+                    .fillMaxHeight()
                     .background(background)
+                    .tableCellDividers(
+                        color = dividerColor,
+                        drawRightDivider = index < columns - 1,
+                        drawBottomDivider = drawBottomDivider
+                    )
                     .padding(horizontal = 8.dp, vertical = 6.dp)
             )
         }
+    }
+}
+
+private fun Modifier.tableCellDividers(
+    color: Color,
+    drawRightDivider: Boolean,
+    drawBottomDivider: Boolean
+): Modifier = drawBehind {
+    val strokeWidth = 1.dp.toPx()
+    if (drawRightDivider) {
+        drawLine(color, Offset(size.width, 0f), Offset(size.width, size.height), strokeWidth)
+    }
+    if (drawBottomDivider) {
+        drawLine(color, Offset(0f, size.height), Offset(size.width, size.height), strokeWidth)
     }
 }
 

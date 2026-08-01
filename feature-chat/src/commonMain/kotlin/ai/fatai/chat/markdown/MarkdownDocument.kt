@@ -288,6 +288,19 @@ object MarkdownParser {
                     index = closing + marker.length
                     continue
                 }
+                if (index + marker.length < source.length) {
+                    // During streaming the closing marker has not arrived yet. Render the
+                    // remainder in its eventual style immediately instead of changing the
+                    // entire run of text after the closing marker arrives.
+                    flushText()
+                    val content = parseInlines(source.substring(index + marker.length))
+                    result += when (marker) {
+                        "**", "__" -> MarkdownInline.Bold(content)
+                        "~~" -> MarkdownInline.Strikethrough(content)
+                        else -> MarkdownInline.Italic(content)
+                    }
+                    break
+                }
             }
 
             text.append(character)
