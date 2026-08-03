@@ -7,6 +7,7 @@ import ai.fatai.chat.markdown.MarkdownDocument
 import ai.fatai.chat.markdown.MarkdownDocumentCodec
 import ai.fatai.chat.markdown.MarkdownParser
 import ai.fatai.feature.user.CurrentUserProvider
+import ai.fatai.sync.SyncMutationSink
 import kotlin.time.Clock
 import kotlin.uuid.Uuid
 import kotlin.uuid.ExperimentalUuidApi
@@ -39,7 +40,8 @@ data class ChatItem(
 
 class ChatRepository(
     private val queries: WatsonQueries,
-    private val currentUser: CurrentUserProvider
+    private val currentUser: CurrentUserProvider,
+    private val serverSync: SyncMutationSink? = null
 ) {
     @OptIn(kotlin.time.ExperimentalTime::class)
     private fun now() = Clock.System.now().toEpochMilliseconds()
@@ -65,6 +67,7 @@ class ChatRepository(
             isPinned = 0L,
             isArchived = 0L
         )
+        serverSync?.syncConversation(id, workspaceId, title, providerType.name, model, false, false)
         return Conversation(id, currentUser.currentUserId, title, workspaceId, providerType, model, time, time, false, false)
     }
 
@@ -90,19 +93,23 @@ class ChatRepository(
 
     fun updateConversationTitle(id: String, title: String) {
         queries.updateConversationTitle(id = id, title = title, updatedAt = now(), userId = currentUser.currentUserId)
+        syncConversation(id)
     }
 
     fun toggleConversationPin(id: String, isPinned: Boolean) {
         queries.updateConversationPin(id = id, isPinned = if (isPinned) 1L else 0L, updatedAt = now(), userId = currentUser.currentUserId)
+        syncConversation(id)
     }
 
     fun toggleConversationArchive(id: String, isArchived: Boolean) {
         queries.updateConversationArchive(id = id, isArchived = if (isArchived) 1L else 0L, updatedAt = now(), userId = currentUser.currentUserId)
+        syncConversation(id)
     }
 
     fun deleteConversation(id: String) {
         queries.deleteByConversationId(id, currentUser.currentUserId)
         queries.deleteConversation(id, currentUser.currentUserId)
+        serverSync?.deleteConversation(id)
     }
 
     fun updateConversationTimestamp(id: String) {
@@ -160,6 +167,13 @@ class ChatRepository(
             contentType = contentType,
             createdAt = time
         )
+        serverSync?.syncMessage(
+            id = id,
+            conversationId = conversationId,
+            role = if (type == ChatItemType.Question) "user" else "assistant",
+            content = content,
+            contentType = contentType.name
+        )
         updateConversationTimestamp(conversationId)
         return ChatItem(
             id = id,
@@ -175,14 +189,34 @@ class ChatRepository(
 
     fun updateMessageContent(id: String, content: String) {
         queries.updateContentById(content = content, id = id, userId = currentUser.currentUserId)
+        queries.selectById(id, currentUser.currentUserId).executeAsOneOrNull()?.let { row ->
+            serverSync?.syncMessage(
+                id = row.id,
+                conversationId = row.conversationId,
+                role = if (row.type == ChatItemType.Question) "user" else "assistant",
+                content = content,
+                contentType = row.contentType.name
+            )
+        }
     }
 
     fun deleteMessage(id: String) {
+        val row = queries.selectById(id, currentUser.currentUserId).executeAsOneOrNull()
         queries.deleteById(id, currentUser.currentUserId)
+        if (row != null) serverSync?.deleteMessage(id)
     }
 
     fun getMessageCount(conversationId: String): Int {
         return queries.selectAllOrderedByTime(conversationId, currentUser.currentUserId).executeAsList().size
+    }
+
+    private fun syncConversation(id: String) {
+        queries.selectConversationById(id, currentUser.currentUserId).executeAsOneOrNull()?.let {
+            serverSync?.syncConversation(
+                it.id, it.workspaceId, it.title, it.providerType.name, it.model,
+                it.isPinned != 0L, it.isArchived != 0L
+            )
+        }
     }
 }
 

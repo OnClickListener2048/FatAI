@@ -2,7 +2,7 @@ package ai.fatai.feature.memory
 
 import ai.fatai.database.sqldelight.WatsonQueries
 import ai.fatai.feature.user.CurrentUserProvider
-import ai.fatai.feature.model.FatAiServerSync
+import ai.fatai.sync.SyncMutationSink
 import kotlin.time.Clock
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
@@ -25,7 +25,7 @@ data class MemoryEntry(
 class MemoryRepository(
     private val queries: WatsonQueries,
     private val currentUser: CurrentUserProvider,
-    private val serverSync: FatAiServerSync? = null
+    private val serverSync: SyncMutationSink? = null
 ) {
     @OptIn(kotlin.time.ExperimentalTime::class)
     private fun now() = Clock.System.now().toEpochMilliseconds()
@@ -62,12 +62,27 @@ class MemoryRepository(
             content = entry.content,
             workspaceId = entry.workspaceId,
             conversationId = entry.conversationId,
-            kind = entry.kind.name
+            kind = entry.kind.name,
+            isArchived = false
         )
         return entry
     }
 
-    fun archive(id: String) = queries.archiveMemory(1L, now(), id, currentUser.currentUserId)
+    fun archive(id: String) {
+        val entry = queries.selectMemoryById(id, currentUser.currentUserId).executeAsOneOrNull()
+        queries.archiveMemory(1L, now(), id, currentUser.currentUserId)
+        entry?.let {
+            serverSync?.syncMemory(
+                id = it.id,
+                scope = it.scope,
+                content = it.content,
+                workspaceId = it.workspaceId,
+                conversationId = it.conversationId,
+                kind = it.kind,
+                isArchived = true
+            )
+        }
+    }
 
     /** Upserts one model-classified global fact while retaining the latest value for its key. */
     fun upsertGlobalFact(key: String, fact: String): MemoryEntry? {
@@ -76,11 +91,23 @@ class MemoryRepository(
         if (queries.selectActiveGlobalFactByContent(currentUser.currentUserId, content).executeAsOneOrNull() != null) {
             return null
         }
+        val archived = queries.selectGlobalFactsByPrefix(currentUser.currentUserId, prefix).executeAsList()
         queries.archiveGlobalFactsByPrefix(
             updatedAt = now(),
             userId = currentUser.currentUserId,
             prefix = prefix
         )
+        archived.forEach {
+            serverSync?.syncMemory(
+                id = it.id,
+                scope = it.scope,
+                content = it.content,
+                workspaceId = it.workspaceId,
+                conversationId = it.conversationId,
+                kind = it.kind,
+                isArchived = true
+            )
+        }
         return save(content = content, scope = MemoryScope.GLOBAL, kind = MemoryKind.FACT)
     }
 }

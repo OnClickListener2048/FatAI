@@ -20,6 +20,7 @@ import ai.fatai.feature.model.FatAiServerSync
 import ai.fatai.feature.model.ModelGateway
 import ai.fatai.feature.model.SyncOutboxStore
 import ai.fatai.feature.model.SyncRemoteStore
+import ai.fatai.sync.SyncMutationSink
 import ai.fatai.feature.prompt.PromptTemplateRepository
 import ai.fatai.feature.workspace.WorkspaceRepository
 import ai.fatai.feature.settings.SettingsRepository
@@ -59,7 +60,7 @@ val sharedModule = module {
 
     single {
         println("ChatRepository")
-        ChatRepository(get(), get())
+        ChatRepository(get(), get(), get())
     }
 
     single {
@@ -67,7 +68,7 @@ val sharedModule = module {
         ApiKeyRepository(get(), get(), get())
     }
 
-    single { WorkspaceRepository(get(), get()) }
+    single { WorkspaceRepository(get(), get(), get()) }
     single { MemoryRepository(get(), get(), get()) }
     single { PromptTemplateRepository(get(), get(), get()) }
     single { FileAssetRepository(get(), get()) }
@@ -81,6 +82,7 @@ val sharedModule = module {
 
     single<ModelGateway> { FatAiServerModelGateway(get(), get()) }
     single { FatAiServerSync(get(), get(), get(), get(), get()) }
+    single<SyncMutationSink> { get<FatAiServerSync>() }
     single { ConversationMemoryService(get(), get()) }
     single { UserMemoryExtractionService(get(), get()) }
 

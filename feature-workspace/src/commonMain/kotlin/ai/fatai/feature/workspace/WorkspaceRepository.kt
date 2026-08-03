@@ -3,6 +3,7 @@ package ai.fatai.feature.workspace
 import ai.fatai.database.sqldelight.WatsonQueries
 import ai.fatai.feature.user.CurrentUserProvider
 import ai.fatai.feature.user.DEFAULT_USER_ID
+import ai.fatai.sync.SyncMutationSink
 import kotlin.time.Clock
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
@@ -22,7 +23,11 @@ data class Workspace(
     val isArchived: Boolean
 )
 
-class WorkspaceRepository(private val queries: WatsonQueries, private val currentUser: CurrentUserProvider) {
+class WorkspaceRepository(
+    private val queries: WatsonQueries,
+    private val currentUser: CurrentUserProvider,
+    private val serverSync: SyncMutationSink? = null
+) {
     val inboxWorkspaceId: String get() = inboxWorkspaceIdFor(currentUser.currentUserId)
 
     @OptIn(kotlin.time.ExperimentalTime::class)
@@ -47,6 +52,7 @@ class WorkspaceRepository(private val queries: WatsonQueries, private val curren
                 updatedAt = workspace.updatedAt,
                 isArchived = 0L
             )
+            serverSync?.syncWorkspace(workspace.id, workspace.name, workspace.systemPrompt, false)
         }
     }
 
@@ -67,15 +73,21 @@ class WorkspaceRepository(private val queries: WatsonQueries, private val curren
             updatedAt = time,
             isArchived = 0L
         )
+        serverSync?.syncWorkspace(workspace.id, workspace.name, workspace.systemPrompt, false)
         return workspace
     }
 
     fun update(id: String, name: String, systemPrompt: String) {
         queries.updateWorkspace(name.trim(), systemPrompt.trim(), now(), id, currentUser.currentUserId)
+        serverSync?.syncWorkspace(id, name.trim(), systemPrompt.trim(), false)
     }
 
     fun archive(id: String, archived: Boolean) {
-        if (id != inboxWorkspaceId) queries.archiveWorkspace(if (archived) 1L else 0L, now(), id, currentUser.currentUserId)
+        if (id != inboxWorkspaceId) {
+            queries.archiveWorkspace(if (archived) 1L else 0L, now(), id, currentUser.currentUserId)
+            val workspace = queries.selectWorkspaceById(id, currentUser.currentUserId).executeAsOneOrNull()
+            workspace?.let { serverSync?.syncWorkspace(it.id, it.name, it.systemPrompt, archived) }
+        }
     }
 }
 

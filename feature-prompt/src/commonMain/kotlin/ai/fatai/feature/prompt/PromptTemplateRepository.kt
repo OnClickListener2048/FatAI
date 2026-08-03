@@ -2,7 +2,7 @@ package ai.fatai.feature.prompt
 
 import ai.fatai.database.sqldelight.WatsonQueries
 import ai.fatai.feature.user.CurrentUserProvider
-import ai.fatai.feature.model.FatAiServerSync
+import ai.fatai.sync.SyncMutationSink
 import kotlin.time.Clock
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
@@ -22,7 +22,7 @@ data class PromptTemplate(
 class PromptTemplateRepository(
     private val queries: WatsonQueries,
     private val currentUser: CurrentUserProvider,
-    private val serverSync: FatAiServerSync? = null
+    private val serverSync: SyncMutationSink? = null
 ) {
     @OptIn(kotlin.time.ExperimentalTime::class)
     private fun now() = Clock.System.now().toEpochMilliseconds()
@@ -59,9 +59,15 @@ class PromptTemplateRepository(
 
     fun update(id: String, name: String, content: String, priority: Long, enabled: Boolean) {
         queries.updatePromptTemplate(name.trim(), content.trim(), priority, if (enabled) 1L else 0L, now(), id, currentUser.currentUserId)
+        serverSync?.syncPrompt(id, name.trim(), content.trim(),
+            queries.selectPromptTemplateById(id, currentUser.currentUserId).executeAsOneOrNull()?.workspaceId,
+            priority, enabled)
     }
 
-    fun delete(id: String) = queries.deletePromptTemplate(id, currentUser.currentUserId)
+    fun delete(id: String) {
+        queries.deletePromptTemplate(id, currentUser.currentUserId)
+        serverSync?.deletePrompt(id)
+    }
 }
 
 private fun ai.fatai.database.sqldelight.PromptTemplate.toPromptTemplate() = PromptTemplate(

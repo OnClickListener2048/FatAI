@@ -3,6 +3,7 @@ package ai.fatai.feature.model
 import ai.fatai.feature.settings.SettingsRepository
 import ai.fatai.feature.user.CurrentUserProvider
 import ai.fatai.chat.ProviderConfig
+import ai.fatai.sync.SyncMutationSink
 import io.ktor.client.HttpClient
 import io.ktor.client.request.header
 import io.ktor.client.request.get
@@ -43,7 +44,7 @@ class FatAiServerSync(
     private val outbox: SyncOutboxStore,
     private val remoteStore: SyncRemoteStore,
     private val serverUrl: String = DEFAULT_FAT_AI_SERVER_URL
-) {
+) : SyncMutationSink {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val syncMutex = Mutex()
     private val pendingModelUploads = mutableMapOf<String, CompletableDeferred<Unit>>()
@@ -58,20 +59,28 @@ class FatAiServerSync(
         scope.launch { drainLoop() }
     }
 
-    fun syncWorkspace(id: String, name: String, systemPrompt: String) {
-        enqueue("workspace", id, "UPSERT", json.encodeToString(WorkspacePayload(id, name, systemPrompt)))
+    override fun syncWorkspace(id: String, name: String, systemPrompt: String, isArchived: Boolean) {
+        enqueue("workspace", id, "UPSERT", json.encodeToString(WorkspacePayload(id, name, systemPrompt, isArchived)))
     }
 
-    fun syncConversation(id: String, workspaceId: String, title: String, providerType: String, model: String) {
+    override fun syncConversation(
+        id: String,
+        workspaceId: String,
+        title: String,
+        providerType: String,
+        model: String,
+        isPinned: Boolean,
+        isArchived: Boolean
+    ) {
         enqueue(
             "conversation",
             id,
             "UPSERT",
-            json.encodeToString(ConversationPayload(id, workspaceId, title, providerType, model))
+            json.encodeToString(ConversationPayload(id, workspaceId, title, providerType, model, isPinned, isArchived))
         )
     }
 
-    fun syncMessage(id: String, conversationId: String, role: String, content: String, contentType: String, reasoningContent: String = "") {
+    override fun syncMessage(id: String, conversationId: String, role: String, content: String, contentType: String, reasoningContent: String) {
         enqueue(
             "message",
             id,
@@ -80,16 +89,24 @@ class FatAiServerSync(
         )
     }
 
-    fun syncMemory(id: String, scope: String, content: String, workspaceId: String?, conversationId: String?, kind: String) {
+    override fun syncMemory(
+        id: String,
+        scope: String,
+        content: String,
+        workspaceId: String?,
+        conversationId: String?,
+        kind: String,
+        isArchived: Boolean
+    ) {
         enqueue(
             "memory",
             id,
             "UPSERT",
-            json.encodeToString(MemoryPayload(id, scope, content, workspaceId, conversationId, kind))
+            json.encodeToString(MemoryPayload(id, scope, content, workspaceId, conversationId, kind, isArchived))
         )
     }
 
-    fun syncPrompt(id: String, name: String, content: String, workspaceId: String?, priority: Long, isEnabled: Boolean) {
+    override fun syncPrompt(id: String, name: String, content: String, workspaceId: String?, priority: Long, isEnabled: Boolean) {
         enqueue(
             "prompt_template",
             id,
@@ -97,6 +114,12 @@ class FatAiServerSync(
             json.encodeToString(PromptPayload(id, name, content, workspaceId, priority, isEnabled))
         )
     }
+
+    override fun deletePrompt(id: String) = enqueue("prompt_template", id, "DELETE", "{}")
+
+    override fun deleteConversation(id: String) = enqueue("conversation", id, "DELETE", "{}")
+
+    override fun deleteMessage(id: String) = enqueue("message", id, "DELETE", "{}")
 
     fun syncModelConfiguration(config: ProviderConfig, isActive: Boolean = true) {
         val configurationId = requireNotNull(config.configurationId) { "A local model configuration is required." }
@@ -282,7 +305,12 @@ private data class DeviceBootstrapPayload(
 private data class DeviceToken(@SerialName("access_token") val accessToken: String)
 
 @Serializable
-private data class WorkspacePayload(val id: String, val name: String, @SerialName("system_prompt") val systemPrompt: String)
+private data class WorkspacePayload(
+    val id: String,
+    val name: String,
+    @SerialName("system_prompt") val systemPrompt: String,
+    @SerialName("is_archived") val isArchived: Boolean
+)
 
 @Serializable
 private data class ConversationPayload(
@@ -290,7 +318,9 @@ private data class ConversationPayload(
     @SerialName("workspace_id") val workspaceId: String,
     val title: String,
     @SerialName("provider_type") val providerType: String,
-    val model: String
+    val model: String,
+    @SerialName("is_pinned") val isPinned: Boolean,
+    @SerialName("is_archived") val isArchived: Boolean
 )
 
 @Serializable
@@ -310,7 +340,8 @@ private data class MemoryPayload(
     val content: String,
     @SerialName("workspace_id") val workspaceId: String?,
     @SerialName("conversation_id") val conversationId: String?,
-    val kind: String
+    val kind: String,
+    @SerialName("is_archived") val isArchived: Boolean
 )
 
 @Serializable

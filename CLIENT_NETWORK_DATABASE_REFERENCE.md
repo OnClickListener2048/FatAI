@@ -154,9 +154,11 @@
 | `insertMemory` | `MemoryRepository.save`、`upsertGlobalFact`。 | `id`、`userId`、`scope`、`workspaceId?`、`conversationId?`、`kind`、`content`、`createdAt`、`updatedAt`、`isArchived`。 | 插入记忆；正常保存后异步同步到服务端。 |
 | `archiveMemory` | `MemoryRepository.archive`。 | `isArchived`、`updatedAt`、`id`、`userId`。 | 软删除一条记忆，并进入同步 outbox。 |
 | `selectActiveGlobalFactByContent` | `MemoryRepository.upsertGlobalFact`。 | `userId`、`content`。 | 检查相同未归档全局事实是否已存在。 |
-| `archiveGlobalFactsByPrefix` | `MemoryRepository.upsertGlobalFact`。 | `updatedAt`、`userId`、`prefix`。 | 软删除相同逻辑键（`"key: "` 前缀）的旧事实。 |
+| `archiveGlobalFactsByPrefix` | `MemoryRepository.upsertGlobalFact`。 | `updatedAt`、`userId`、`prefix`。 | 软删除相同逻辑键（`"key: "` 前缀）的旧事实，并逐条进入同步 outbox。 |
+| `selectMemoryById`、`selectGlobalFactsByPrefix` | `MemoryRepository.archive`、`upsertGlobalFact`。 | `id`/`userId` 或 `prefix`/`userId`。 | 读取归档前实体，构造服务端同步 payload。 |
 | `selectEnabledPromptTemplates` | `PromptTemplateRepository.enabledFor`，由上下文组装调用。 | `userId`、`workspaceId?`。 | 读取启用的全局模板或匹配工作空间模板，按 `priority DESC, updatedAt DESC` 排序。 |
-| `insertPromptTemplate` | `PromptTemplateRepository.create`。 | `id`、`userId`、`name`、`content`、`workspaceId?`、`priority`、`isEnabled`、`createdAt`、`updatedAt`。 | 新增启用模板，并异步同步到服务端。 |
+| `insertPromptTemplate` | `PromptTemplateRepository.create`。 | `id`、`userId`、`name`、`content`、`workspaceId?`、`priority`、`isEnabled`、`createdAt`、`updatedAt`。 | 新增启用模板，并进入同步 outbox。 |
+| `selectPromptTemplateById` | `PromptTemplateRepository.update`。 | `id`、`userId`。 | 读取更新后的模板归属字段。 |
 | `updatePromptTemplate` | `PromptTemplateRepository.update`。 | `name`、`content`、`priority`、`isEnabled`、`updatedAt`、`id`、`userId`。 | 更新模板并进入同步 outbox。 |
 | `deletePromptTemplate` | `PromptTemplateRepository.delete`。 | `id`、`userId`。 | 删除模板并进入同步 outbox。 |
 
