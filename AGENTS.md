@@ -30,3 +30,7 @@ Place cross-platform tests in `src/commonTest/kotlin` and platform-specific test
 ## Commit & Pull Request Guidelines
 
 Use concise Conventional Commit-style messages already present in history, e.g. `feat: add provider-aware tool framework` or `fix: limit message copy controls`. Keep commits scoped to one concern. PRs should explain behavior changes, list verification commands, link relevant issues, and include screenshots for Compose UI changes. Do not commit API keys, `local.properties`, generated build outputs, or local databases.
+
+## API & Database Documentation
+
+Every change to a network endpoint, request/response schema, sync protocol, database table, SQLDelight query, migration, or persistence behavior must update `CLIENT_NETWORK_DATABASE_REFERENCE.md` in the same commit. New client interfaces must follow the existing authenticated FatAI sync contract and documented request/response conventions.
