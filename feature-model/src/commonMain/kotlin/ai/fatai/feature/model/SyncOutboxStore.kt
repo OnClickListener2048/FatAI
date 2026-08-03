@@ -19,10 +19,16 @@ data class PendingSyncOperation(
 )
 
 /** Durable local queue shared by every repository that mirrors data to FatAI Server. */
+@OptIn(kotlin.time.ExperimentalTime::class)
 class SyncOutboxStore(
     private val queries: WatsonQueries,
     private val currentUser: CurrentUserProvider
 ) {
+    init {
+        val now = Clock.System.now().toEpochMilliseconds()
+        queries.recoverSyncOutbox(now, now, currentUser.currentUserId)
+    }
+
     @OptIn(kotlin.time.ExperimentalTime::class, ExperimentalUuidApi::class)
     fun enqueue(
         entityType: String,
@@ -30,7 +36,7 @@ class SyncOutboxStore(
         operation: String,
         payload: String,
         schemaVersion: Long = 1
-    ) {
+    ): String {
         require(operation == "UPSERT" || operation == "DELETE") { "Unsupported sync operation: $operation" }
         val now = Clock.System.now().toEpochMilliseconds()
         val userId = currentUser.currentUserId
@@ -41,8 +47,9 @@ class SyncOutboxStore(
         } else {
             queries.updateSyncSequence(sequence, userId, entityType, entityId)
         }
+        val id = Uuid.random().toString()
         queries.insertSyncOutbox(
-            id = Uuid.random().toString(),
+            id = id,
             userId = userId,
             entityType = entityType,
             entityId = entityId,
@@ -54,6 +61,7 @@ class SyncOutboxStore(
             nextAttemptAt = now,
             updatedAt = now
         )
+        return id
     }
 
     @OptIn(kotlin.time.ExperimentalTime::class)
@@ -80,6 +88,23 @@ class SyncOutboxStore(
         queries.markSyncOutboxRetrying(
             attemptCount = attemptCount,
             nextAttemptAt = nextAttemptAt,
+            lastErrorCode = errorCode,
+            lastErrorMessage = errorMessage,
+            updatedAt = Clock.System.now().toEpochMilliseconds(),
+            id = operation.id,
+            userId = currentUser.currentUserId
+        )
+    }
+
+    @OptIn(kotlin.time.ExperimentalTime::class)
+    fun markFailed(
+        operation: PendingSyncOperation,
+        attemptCount: Long,
+        errorCode: String,
+        errorMessage: String
+    ) {
+        queries.markSyncOutboxFailed(
+            attemptCount = attemptCount,
             lastErrorCode = errorCode,
             lastErrorMessage = errorMessage,
             updatedAt = Clock.System.now().toEpochMilliseconds(),

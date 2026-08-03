@@ -16,6 +16,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -26,14 +27,20 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.jsonObject
+import kotlin.math.min
+import kotlin.time.Clock
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
 
 /** Mirrors local cache writes to the authenticated FastAPI source of truth in FIFO order. */
+@OptIn(kotlin.time.ExperimentalTime::class)
 class FatAiServerSync(
     private val client: HttpClient,
     private val settings: SettingsRepository,
     private val currentUser: CurrentUserProvider,
+    private val outbox: SyncOutboxStore,
     private val serverUrl: String = DEFAULT_FAT_AI_SERVER_URL
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -42,24 +49,51 @@ class FatAiServerSync(
     private val _lastError = MutableStateFlow<String?>(null)
     val lastError: StateFlow<String?> = _lastError.asStateFlow()
 
-    fun syncWorkspace(id: String, name: String, systemPrompt: String) = enqueue {
-        post("/v1/workspaces", WorkspacePayload(id, name, systemPrompt))
+    private val _pendingCount = MutableStateFlow(outbox.pendingCount())
+    val pendingCount: StateFlow<Long> = _pendingCount.asStateFlow()
+
+    init {
+        scope.launch { drainLoop() }
     }
 
-    fun syncConversation(id: String, workspaceId: String, title: String, providerType: String, model: String) = enqueue {
-        post("/v1/conversations", ConversationPayload(id, workspaceId, title, providerType, model))
+    fun syncWorkspace(id: String, name: String, systemPrompt: String) {
+        enqueue("workspace", id, "UPSERT", json.encodeToString(WorkspacePayload(id, name, systemPrompt)))
     }
 
-    fun syncMessage(id: String, conversationId: String, role: String, content: String, contentType: String, reasoningContent: String = "") = enqueue {
-        post("/v1/conversations/$conversationId/messages", MessagePayload(id, role, content, reasoningContent, contentType))
+    fun syncConversation(id: String, workspaceId: String, title: String, providerType: String, model: String) {
+        enqueue(
+            "conversation",
+            id,
+            "UPSERT",
+            json.encodeToString(ConversationPayload(id, workspaceId, title, providerType, model))
+        )
     }
 
-    fun syncMemory(id: String, scope: String, content: String, workspaceId: String?, conversationId: String?, kind: String) = enqueue {
-        post("/v1/memories", MemoryPayload(id, scope, content, workspaceId, conversationId, kind))
+    fun syncMessage(id: String, conversationId: String, role: String, content: String, contentType: String, reasoningContent: String = "") {
+        enqueue(
+            "message",
+            id,
+            "UPSERT",
+            json.encodeToString(MessagePayload(conversationId, id, role, content, reasoningContent, contentType))
+        )
     }
 
-    fun syncPrompt(id: String, name: String, content: String, workspaceId: String?, priority: Long, isEnabled: Boolean) = enqueue {
-        post("/v1/prompt-templates", PromptPayload(id, name, content, workspaceId, priority, isEnabled))
+    fun syncMemory(id: String, scope: String, content: String, workspaceId: String?, conversationId: String?, kind: String) {
+        enqueue(
+            "memory",
+            id,
+            "UPSERT",
+            json.encodeToString(MemoryPayload(id, scope, content, workspaceId, conversationId, kind))
+        )
+    }
+
+    fun syncPrompt(id: String, name: String, content: String, workspaceId: String?, priority: Long, isEnabled: Boolean) {
+        enqueue(
+            "prompt_template",
+            id,
+            "UPSERT",
+            json.encodeToString(PromptPayload(id, name, content, workspaceId, priority, isEnabled))
+        )
     }
 
     fun syncModelConfiguration(config: ProviderConfig, isActive: Boolean = true) {
@@ -67,35 +101,34 @@ class FatAiServerSync(
         val completion = CompletableDeferred<Unit>()
         pendingModelUploads[configurationId] = completion
         enqueue(
-            block = { upsertModelConfiguration(config, isActive) },
-            onSuccess = { completion.complete(Unit) },
-            onFailure = { completion.completeExceptionally(it) }
+            entityType = "model_configuration",
+            entityId = configurationId,
+            operation = "UPSERT",
+            payload = json.encodeToString(
+                ModelConfigurationPayload(
+                    id = configurationId,
+                    name = config.configurationName ?: config.providerType.displayName,
+                    providerType = config.providerType.name,
+                    apiKey = config.apiKey,
+                    baseUrl = config.baseUrl,
+                    model = config.model,
+                    isActive = isActive
+                )
+            )
         )
     }
 
-    fun activateModelConfiguration(id: String) = enqueue {
-        post("/v1/model-configurations/$id/activate", EmptyPayload)
+    fun activateModelConfiguration(id: String) {
+        enqueue("model_configuration", id, "UPSERT", json.encodeToString(ModelActivationPayload(id, true)))
     }
 
-    fun deleteModelConfiguration(id: String) = enqueue {
-        delete("/v1/model-configurations/$id")
+    fun deleteModelConfiguration(id: String) {
+        enqueue("model_configuration", id, "DELETE", "{}")
     }
 
     suspend fun upsertModelConfiguration(config: ProviderConfig, isActive: Boolean = true) {
-        val configurationId = requireNotNull(config.configurationId) { "A local model configuration is required." }
-        require(config.apiKey.isNotBlank()) { "The selected model configuration has no API key." }
-        post(
-            "/v1/model-configurations",
-            ModelConfigurationPayload(
-                id = configurationId,
-                name = config.configurationName ?: config.providerType.displayName,
-                providerType = config.providerType.name,
-                apiKey = config.apiKey,
-                baseUrl = config.baseUrl,
-                model = config.model,
-                isActive = isActive
-            )
-        )
+        syncModelConfiguration(config, isActive)
+        awaitModelConfiguration(config.configurationId)
     }
 
     suspend fun awaitModelConfiguration(id: String?) {
@@ -103,52 +136,74 @@ class FatAiServerSync(
     }
 
     private fun enqueue(
-        onSuccess: (() -> Unit)? = null,
-        onFailure: ((Exception) -> Unit)? = null,
-        block: suspend () -> Unit
+        entityType: String,
+        entityId: String,
+        operation: String,
+        payload: String
     ) {
-        scope.launch {
-            syncMutex.withLock {
-                try {
-                    block()
-                    _lastError.value = null
-                    onSuccess?.invoke()
-                } catch (error: Exception) {
-                    _lastError.value = error.message ?: "FatAI server synchronization failed."
-                    onFailure?.invoke(error)
-                }
+        outbox.enqueue(entityType, entityId, operation, payload)
+        _pendingCount.value = outbox.pendingCount()
+    }
+
+    private suspend fun drainLoop() {
+        while (true) {
+            val operation = outbox.pending(Clock.System.now().toEpochMilliseconds(), limit = 1).firstOrNull()
+            if (operation == null) {
+                delay(1_000)
+                continue
             }
+            syncMutex.withLock { send(operation) }
         }
     }
 
-    private suspend fun post(path: String, body: Any) {
-        val token = accessToken()
-        val response = client.post("${serverUrl.trimEnd('/')}$path") {
-            contentType(ContentType.Application.Json)
-            header("Authorization", "Bearer $token")
-            setBody(
-                when (body) {
-                    is WorkspacePayload -> json.encodeToString(body)
-                    is ConversationPayload -> json.encodeToString(body)
-                    is MessagePayload -> json.encodeToString(body)
-                    is MemoryPayload -> json.encodeToString(body)
-                    is PromptPayload -> json.encodeToString(body)
-                    is ModelConfigurationPayload -> json.encodeToString(body)
-                    EmptyPayload -> "{}"
-                    else -> error("Unsupported sync payload")
-                }
+    private suspend fun send(operation: PendingSyncOperation) {
+        outbox.markSending(operation.id)
+        try {
+            val request = SyncOperationRequest(
+                operationId = operation.id,
+                entityType = operation.entityType,
+                entityId = operation.entityId,
+                operation = operation.operation,
+                sequence = operation.sequence,
+                schemaVersion = operation.schemaVersion,
+                payload = json.parseToJsonElement(operation.payload).jsonObject
             )
-        }
-        if (!response.status.isSuccess()) error(response.bodyAsText().ifBlank { "FatAI server returned ${response.status.value}." })
-    }
-
-    private suspend fun delete(path: String) {
-        val token = accessToken()
-        val response = client.delete("${serverUrl.trimEnd('/')}$path") {
-            header("Authorization", "Bearer $token")
-        }
-        if (!response.status.isSuccess() && response.status.value != 404) {
-            error(response.bodyAsText().ifBlank { "FatAI server returned ${response.status.value}." })
+            val token = accessToken()
+            val response = client.post("${serverUrl.trimEnd('/')}/v1/sync/operations") {
+                contentType(ContentType.Application.Json)
+                header("Authorization", "Bearer $token")
+                setBody(json.encodeToString(request))
+            }
+            if (!response.status.isSuccess()) {
+                throw SyncHttpException(response.status.value, response.bodyAsText())
+            }
+            outbox.markSucceeded(operation.id)
+            pendingModelUploads.remove(operation.entityId)?.complete(Unit)
+            _lastError.value = null
+        } catch (error: Exception) {
+            val attempt = operation.attemptCount + 1L
+            val code = when (error) {
+                is SyncHttpException -> "HTTP_${error.status}"
+                else -> "NETWORK"
+            }
+            val message = error.message ?: "FatAI server synchronization failed."
+            val permanent = error is SyncHttpException && error.status in 400..499 && error.status !in setOf(408, 409, 429)
+            if (permanent) {
+                outbox.markFailed(operation, attempt, code, message)
+                pendingModelUploads.remove(operation.entityId)?.completeExceptionally(error)
+            } else {
+                val delayMillis = min(60_000L, 1_000L * (1L shl min(attempt.toInt(), 6)))
+                outbox.markRetrying(
+                    operation,
+                    attempt,
+                    Clock.System.now().toEpochMilliseconds() + delayMillis,
+                    code,
+                    message
+                )
+            }
+            _lastError.value = "$code: $message"
+        } finally {
+            _pendingCount.value = outbox.pendingCount()
         }
     }
 
@@ -194,6 +249,7 @@ private data class ConversationPayload(
 
 @Serializable
 private data class MessagePayload(
+    @SerialName("conversation_id") val conversationId: String,
     val id: String,
     val role: String,
     val content: String,
@@ -232,4 +288,23 @@ private data class ModelConfigurationPayload(
     @SerialName("is_active") val isActive: Boolean
 )
 
-private data object EmptyPayload
+@Serializable
+private data class ModelActivationPayload(
+    val id: String,
+    @SerialName("is_active") val isActive: Boolean
+)
+
+@Serializable
+private data class SyncOperationRequest(
+    @SerialName("operation_id") val operationId: String,
+    @SerialName("entity_type") val entityType: String,
+    @SerialName("entity_id") val entityId: String,
+    val operation: String,
+    val sequence: Long,
+    @SerialName("schema_version") val schemaVersion: Long,
+    val payload: JsonObject
+)
+
+private class SyncHttpException(val status: Int, body: String) : RuntimeException(
+    body.ifBlank { "FatAI server returned HTTP $status." }
+)

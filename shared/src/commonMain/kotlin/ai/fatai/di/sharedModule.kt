@@ -18,6 +18,7 @@ import ai.fatai.feature.memory.UserMemoryExtractionService
 import ai.fatai.feature.model.FatAiServerModelGateway
 import ai.fatai.feature.model.FatAiServerSync
 import ai.fatai.feature.model.ModelGateway
+import ai.fatai.feature.model.SyncOutboxStore
 import ai.fatai.feature.prompt.PromptTemplateRepository
 import ai.fatai.feature.workspace.WorkspaceRepository
 import ai.fatai.feature.settings.SettingsRepository
@@ -70,13 +71,14 @@ val sharedModule = module {
     single { PromptTemplateRepository(get(), get(), get()) }
     single { FileAssetRepository(get(), get()) }
     single { SettingsRepository(get(), get()) }
+    single { SyncOutboxStore(get(), get()) }
     // Docling conversion can produce richer Markdown than lightweight tools, while the registry
     // still imposes a strict prompt-sized bound on every tool result.
     single { ToolRegistry(DefaultTools.all(get()), ToolExecutionPolicy(maxOutputCharacters = 24_000)) }
     single { ToolProviderAdapterRegistry(DefaultToolProviderAdapters.all()) }
 
     single<ModelGateway> { FatAiServerModelGateway(get(), get()) }
-    single { FatAiServerSync(get(), get(), get()) }
+    single { FatAiServerSync(get(), get(), get(), get()) }
     single { ConversationMemoryService(get(), get()) }
     single { UserMemoryExtractionService(get(), get()) }
 

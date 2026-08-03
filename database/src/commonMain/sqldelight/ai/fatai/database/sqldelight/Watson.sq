@@ -338,9 +338,19 @@ markSyncOutboxSending:
 UPDATE SyncOutbox SET status = 'SENDING', updatedAt = :updatedAt
 WHERE id = :id AND userId = :userId;
 
+recoverSyncOutbox:
+UPDATE SyncOutbox SET status = 'RETRYING', nextAttemptAt = :nextAttemptAt, updatedAt = :updatedAt
+WHERE userId = :userId AND status = 'SENDING';
+
 markSyncOutboxRetrying:
 UPDATE SyncOutbox SET
     status = 'RETRYING', attemptCount = :attemptCount, nextAttemptAt = :nextAttemptAt,
+    lastErrorCode = :lastErrorCode, lastErrorMessage = :lastErrorMessage, updatedAt = :updatedAt
+WHERE id = :id AND userId = :userId;
+
+markSyncOutboxFailed:
+UPDATE SyncOutbox SET
+    status = 'FAILED', attemptCount = :attemptCount,
     lastErrorCode = :lastErrorCode, lastErrorMessage = :lastErrorMessage, updatedAt = :updatedAt
 WHERE id = :id AND userId = :userId;
 
