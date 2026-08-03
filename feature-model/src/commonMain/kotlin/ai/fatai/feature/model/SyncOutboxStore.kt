@@ -47,6 +47,8 @@ class SyncOutboxStore(
         } else {
             queries.updateSyncSequence(sequence, userId, entityType, entityId)
         }
+        // Keep only the newest unsent state for an entity; an in-flight task remains intact.
+        queries.coalescePendingSyncOutbox(userId, entityType, entityId)
         val id = Uuid.random().toString()
         queries.insertSyncOutbox(
             id = id,

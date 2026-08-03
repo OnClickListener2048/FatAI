@@ -345,6 +345,11 @@ VALUES (
     :createdAt, 0, :nextAttemptAt, 'PENDING', NULL, NULL, :updatedAt
 );
 
+coalescePendingSyncOutbox:
+DELETE FROM SyncOutbox
+WHERE userId = :userId AND entityType = :entityType AND entityId = :entityId
+  AND status IN ('PENDING', 'RETRYING');
+
 selectPendingSyncOutbox:
 SELECT * FROM SyncOutbox
 WHERE userId = :userId AND status IN ('PENDING', 'RETRYING') AND nextAttemptAt <= :now

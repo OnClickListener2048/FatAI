@@ -91,7 +91,7 @@
 | `FileAsset` | 已选附件的本地元数据：`id`、`userId`、`workspaceId?`、`conversationId?`、`messageId?`、文件名、MIME、`localPath`、`sizeBytes`、`createdAt`。文件内容不写入数据库。 |
 | `AppSetting` | 按用户保存的键值设置：`userId` + `key` 为联合主键，另有 `value`、`updatedAt`。主题和 FatAI 设备 ID 使用此表。 |
 | `SyncSequence` | 每个实体的本地单调序号，避免乱序操作覆盖。 |
-| `SyncOutbox` | 持久化同步任务：状态包括 `PENDING`、`SENDING`、`RETRYING`、`FAILED`，并记录重试次数及错误分类。 |
+| `SyncOutbox` | 持久化同步任务：状态包括 `PENDING`、`SENDING`、`RETRYING`、`FAILED`，并记录重试次数及错误分类；同一实体的未发送任务会合并为最新状态，避免队列膨胀。 |
 
 ### 用户与应用设置
 
