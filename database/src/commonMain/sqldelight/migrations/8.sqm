@@ -1,0 +1,25 @@
+CREATE TABLE SyncSequence (
+    userId TEXT NOT NULL REFERENCES UserAccount(id),
+    entityType TEXT NOT NULL,
+    entityId TEXT NOT NULL,
+    sequence INTEGER NOT NULL,
+    PRIMARY KEY (userId, entityType, entityId)
+);
+
+CREATE TABLE SyncOutbox (
+    id TEXT NOT NULL PRIMARY KEY,
+    userId TEXT NOT NULL REFERENCES UserAccount(id),
+    entityType TEXT NOT NULL,
+    entityId TEXT NOT NULL,
+    operation TEXT NOT NULL CHECK(operation IN ('UPSERT', 'DELETE')),
+    sequence INTEGER NOT NULL,
+    schemaVersion INTEGER NOT NULL DEFAULT 1,
+    payload TEXT NOT NULL,
+    createdAt INTEGER NOT NULL,
+    attemptCount INTEGER NOT NULL DEFAULT 0,
+    nextAttemptAt INTEGER NOT NULL DEFAULT 0,
+    status TEXT NOT NULL DEFAULT 'PENDING',
+    lastErrorCode TEXT,
+    lastErrorMessage TEXT,
+    updatedAt INTEGER NOT NULL
+);
