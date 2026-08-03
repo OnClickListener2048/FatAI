@@ -169,6 +169,19 @@
 `deleteRemoteApiKey` 和 `upsertSyncSequence`。这些查询由 `SyncRemoteStore` 调用，不会触发
 本地业务 Repository 的再次同步。
 
+### 数据库删除恢复验收
+
+桌面端数据库路径为 `%USERPROFILE%\\.fatai\\app.db`。可按以下步骤验证恢复能力：
+
+1. 启动服务端：在 `C:\\Users\\wang2\\fat-ai-server` 执行 `python main.py`。
+2. 启动客户端，创建一个工作空间、会话和消息，等待同步状态中的 `pendingCount` 回到 `0`。
+3. 完全退出客户端后删除 `%USERPROFILE%\\.fatai\\app.db`，不要删除服务端数据库。
+4. 再次运行 `.\\gradlew.bat :composeApp:run`。启动同步会使用稳定设备 ID，先请求
+   `/v1/sync/snapshot`，再请求 `/v1/sync/changes`，本地应重新出现刚才的工作空间、会话和消息。
+5. 修改恢复后的消息并重启客户端，确认修改仍可上传，证明 snapshot 携带的实体 sequence 已被保留。
+
+Android/iOS 使用各自平台 SQLite 沙盒路径，验收步骤相同：清除应用数据后重新启动并检查相同实体。
+
 ### 文件附件
 
 | 命名查询 | Repository 调用 / 用途 | 参数 | 数据库效果 |

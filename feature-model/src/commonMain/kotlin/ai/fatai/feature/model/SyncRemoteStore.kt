@@ -98,16 +98,33 @@ class SyncRemoteStore(
             "model_configuration" -> if (change.operation == "DELETE") {
                 queries.deleteRemoteApiKey(change.entityId, currentUser.currentUserId)
             } else {
-                queries.upsertRemoteApiKey(
-                    id = change.entityId,
-                    userId = currentUser.currentUserId,
-                    providerType = provider(payload.string("provider_type")),
-                    name = payload.string("name"),
-                    baseUrl = payload.string("base_url"),
-                    model = payload.string("model"),
-                    isActive = payload.bool("is_active", true).asLong(),
-                    createdAt = now
-                )
+                val providerType = provider(payload.string("provider_type"))
+                val name = payload.string("name")
+                val baseUrl = payload.string("base_url")
+                val model = payload.string("model")
+                val isActive = payload.bool("is_active", true).asLong()
+                if (queries.selectApiKeyById(change.entityId, currentUser.currentUserId).executeAsOneOrNull() == null) {
+                    queries.upsertRemoteApiKey(
+                        id = change.entityId,
+                        userId = currentUser.currentUserId,
+                        providerType = providerType,
+                        name = name,
+                        baseUrl = baseUrl,
+                        model = model,
+                        isActive = isActive,
+                        createdAt = now
+                    )
+                } else {
+                    queries.updateRemoteApiKeyMetadata(
+                        providerType = providerType,
+                        name = name,
+                        baseUrl = baseUrl,
+                        model = model,
+                        isActive = isActive,
+                        id = change.entityId,
+                        userId = currentUser.currentUserId
+                    )
+                }
             }
             "setting" -> if (change.operation == "DELETE") {
                 queries.deleteRemoteSetting(currentUser.currentUserId, change.entityId)

@@ -429,3 +429,8 @@ VALUES (:id, :userId, :providerType, :name, '', :baseUrl, :model, :isActive, :cr
 
 deleteRemoteApiKey:
 DELETE FROM ApiKey WHERE id = :id AND userId = :userId;
+
+updateRemoteApiKeyMetadata:
+UPDATE ApiKey SET providerType = :providerType, name = :name, baseUrl = :baseUrl,
+    model = :model, isActive = :isActive
+WHERE id = :id AND userId = :userId;
