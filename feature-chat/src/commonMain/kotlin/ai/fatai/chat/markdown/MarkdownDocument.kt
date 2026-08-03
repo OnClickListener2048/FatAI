@@ -177,8 +177,9 @@ object MarkdownParser {
 
     private fun isTableStart(lines: List<String>, index: Int): Boolean {
         if (index + 1 >= lines.size || !lines[index].contains('|')) return false
+        val headerCells = splitTableRow(lines[index])
         val dividerCells = splitTableRow(lines[index + 1])
-        return dividerCells.isNotEmpty() && dividerCells.all { cell ->
+        return headerCells.size == dividerCells.size && dividerCells.isNotEmpty() && dividerCells.all { cell ->
             cell.trim().matches(Regex("^:?-{3,}:?$"))
         }
     }
@@ -188,19 +189,35 @@ object MarkdownParser {
         val cells = mutableListOf<String>()
         val current = StringBuilder()
         var escaped = false
-        value.forEach { character ->
+        var codeDelimiterLength = 0
+        var index = 0
+        while (index < value.length) {
+            val character = value[index]
             when {
                 escaped -> {
                     current.append(character)
                     escaped = false
                 }
                 character == '\\' -> escaped = true
-                character == '|' -> {
+                character == '`' -> {
+                    var delimiterEnd = index
+                    while (value.getOrNull(delimiterEnd) == '`') delimiterEnd++
+                    val delimiterLength = delimiterEnd - index
+                    if (codeDelimiterLength == 0) {
+                        codeDelimiterLength = delimiterLength
+                    } else if (delimiterLength == codeDelimiterLength) {
+                        codeDelimiterLength = 0
+                    }
+                    current.append(value.substring(index, delimiterEnd))
+                    index = delimiterEnd - 1
+                }
+                character == '|' && codeDelimiterLength == 0 -> {
                     cells += current.toString().trim()
                     current.clear()
                 }
                 else -> current.append(character)
             }
+            index++
         }
         if (escaped) current.append('\\')
         cells += current.toString().trim()

@@ -8,6 +8,8 @@ import ai.fatai.chat.markdown.MarkdownParser
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
@@ -186,32 +188,37 @@ private fun MarkdownTable(
     val columns = maxOf(table.header.size, table.rows.maxOfOrNull { it.size } ?: 0)
     if (columns == 0) return
 
-    val cellWidth = if (compactLayout) 130.dp else 160.dp
+    val minimumCellWidth = if (compactLayout) 130.dp else 160.dp
     val scrollState = rememberScrollState()
-    Column(
+    BoxWithConstraints(
         modifier = Modifier
             .fillMaxWidth()
-            .horizontalScroll(scrollState)
             .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(6.dp))
             .clip(RoundedCornerShape(6.dp))
     ) {
-        MarkdownTableRow(
-            cells = table.header,
-            columns = columns,
-            cellWidth = cellWidth,
-            bodyStyle = bodyStyle.copy(fontWeight = FontWeight.SemiBold),
-            background = MaterialTheme.colorScheme.surfaceVariant,
-            drawBottomDivider = true
-        )
-        table.rows.forEachIndexed { index, row ->
-            MarkdownTableRow(
-                cells = row,
-                columns = columns,
-                cellWidth = cellWidth,
-                bodyStyle = bodyStyle,
-                background = Color.Transparent,
-                drawBottomDivider = index < table.rows.lastIndex
-            )
+        val tableWidth = maxOf(maxWidth, minimumCellWidth * columns)
+        val cellWidth = tableWidth / columns
+        Box(Modifier.fillMaxWidth().horizontalScroll(scrollState)) {
+            Column(Modifier.width(tableWidth)) {
+                MarkdownTableRow(
+                    cells = table.header,
+                    columns = columns,
+                    cellWidth = cellWidth,
+                    bodyStyle = bodyStyle.copy(fontWeight = FontWeight.SemiBold),
+                    background = MaterialTheme.colorScheme.surfaceVariant,
+                    drawBottomDivider = true
+                )
+                table.rows.forEachIndexed { index, row ->
+                    MarkdownTableRow(
+                        cells = row,
+                        columns = columns,
+                        cellWidth = cellWidth,
+                        bodyStyle = bodyStyle,
+                        background = Color.Transparent,
+                        drawBottomDivider = index < table.rows.lastIndex
+                    )
+                }
+            }
         }
     }
 }
