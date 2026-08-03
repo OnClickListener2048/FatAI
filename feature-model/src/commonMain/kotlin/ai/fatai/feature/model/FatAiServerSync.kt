@@ -5,7 +5,8 @@ import ai.fatai.feature.user.CurrentUserProvider
 import ai.fatai.chat.ProviderConfig
 import io.ktor.client.HttpClient
 import io.ktor.client.request.header
-import io.ktor.client.request.delete
+import io.ktor.client.request.get
+import io.ktor.client.request.parameter
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.bodyAsText
@@ -32,7 +33,6 @@ import kotlinx.serialization.json.jsonObject
 import kotlin.math.min
 import kotlin.time.Clock
 import kotlin.uuid.ExperimentalUuidApi
-import kotlin.uuid.Uuid
 
 /** Mirrors local cache writes to the authenticated FastAPI source of truth in FIFO order. */
 @OptIn(kotlin.time.ExperimentalTime::class)
@@ -41,6 +41,7 @@ class FatAiServerSync(
     private val settings: SettingsRepository,
     private val currentUser: CurrentUserProvider,
     private val outbox: SyncOutboxStore,
+    private val remoteStore: SyncRemoteStore,
     private val serverUrl: String = DEFAULT_FAT_AI_SERVER_URL
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -53,6 +54,7 @@ class FatAiServerSync(
     val pendingCount: StateFlow<Long> = _pendingCount.asStateFlow()
 
     init {
+        scope.launch { pullLoop() }
         scope.launch { drainLoop() }
     }
 
@@ -156,6 +158,48 @@ class FatAiServerSync(
         }
     }
 
+    private suspend fun pullLoop() {
+        while (true) {
+            runCatching { pullRemoteChanges() }
+                .onFailure { error ->
+                    _lastError.value = "PULL: " + (error.message ?: "FatAI server pull failed.")
+                }
+            delay(5_000)
+        }
+    }
+
+    private suspend fun pullRemoteChanges() {
+        syncMutex.withLock {
+            val token = accessToken()
+            var cursor = outbox.cursor()
+            if (cursor == 0L && outbox.pendingCount() == 0L) {
+                val snapshot = client.get("${serverUrl.trimEnd('/')}/v1/sync/snapshot") {
+                    header("Authorization", "Bearer $token")
+                }.requireSuccess()
+                val body = json.decodeFromString<SyncSnapshotResponse>(snapshot.bodyAsText())
+                body.entities.forEach { remoteStore.apply(it.toRemoteChange()) }
+                outbox.updateCursor(body.cursor)
+                cursor = body.cursor
+            }
+            var hasMore: Boolean
+            do {
+                val response = client.get("${serverUrl.trimEnd('/')}/v1/sync/changes") {
+                    header("Authorization", "Bearer $token")
+                    parameter("cursor", cursor)
+                    parameter("limit", 100)
+                }.requireSuccess()
+                val changes = json.decodeFromString<SyncChangesResponse>(response.bodyAsText())
+                hasMore = changes.hasMore
+                changes.changes.forEach { remoteStore.apply(it.toRemoteChange()) }
+                if (changes.nextCursor != cursor) {
+                    outbox.updateCursor(changes.nextCursor)
+                    cursor = changes.nextCursor
+                }
+            } while (hasMore)
+            _lastError.value = null
+        }
+    }
+
     private suspend fun send(operation: PendingSyncOperation) {
         outbox.markSending(operation.id)
         try {
@@ -209,7 +253,7 @@ class FatAiServerSync(
 
     @OptIn(ExperimentalUuidApi::class)
     suspend fun accessToken(): String {
-        val deviceId = settings.getValue(DEVICE_ID_KEY) ?: Uuid.random().toString().also {
+        val deviceId = settings.getValue(DEVICE_ID_KEY) ?: stableDeviceId(currentUser.currentUserId).also {
             settings.putValue(DEVICE_ID_KEY, it)
         }
         val response = client.post("${serverUrl.trimEnd('/')}/v1/auth/device") {
@@ -223,6 +267,8 @@ class FatAiServerSync(
     private companion object {
         const val DEVICE_ID_KEY = "fat_ai_server_device_id"
         val json = Json { ignoreUnknownKeys = true }
+
+        fun stableDeviceId(userId: String): String = "fatai-device-$userId"
     }
 }
 
@@ -304,6 +350,45 @@ private data class SyncOperationRequest(
     @SerialName("schema_version") val schemaVersion: Long,
     val payload: JsonObject
 )
+
+@Serializable
+private data class SyncSnapshotResponse(
+    val entities: List<SyncChangeResponse>,
+    val cursor: Long
+)
+
+@Serializable
+private data class SyncChangesResponse(
+    val changes: List<SyncChangeResponse>,
+    @SerialName("next_cursor") val nextCursor: Long,
+    @SerialName("has_more") val hasMore: Boolean
+)
+
+@Serializable
+private data class SyncChangeResponse(
+    val cursor: Long,
+    @SerialName("operation_id") val operationId: String,
+    @SerialName("entity_type") val entityType: String,
+    @SerialName("entity_id") val entityId: String,
+    val operation: String,
+    val sequence: Long,
+    val payload: JsonObject
+)
+
+private fun SyncChangeResponse.toRemoteChange() = RemoteSyncChange(
+    cursor = cursor,
+    operationId = operationId,
+    entityType = entityType,
+    entityId = entityId,
+    operation = operation,
+    sequence = sequence,
+    payload = payload
+)
+
+private suspend fun io.ktor.client.statement.HttpResponse.requireSuccess(): io.ktor.client.statement.HttpResponse {
+    if (!status.isSuccess()) throw SyncHttpException(status.value, bodyAsText())
+    return this
+}
 
 private class SyncHttpException(val status: Int, body: String) : RuntimeException(
     body.ifBlank { "FatAI server returned HTTP $status." }

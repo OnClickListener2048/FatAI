@@ -9,7 +9,7 @@
 - 当前 Koin 默认注入 `FatAiServerModelGateway`，因此正常聊天经 FatAI 服务，而不是直接访问模型厂商。
 - FatAI 服务默认地址为 `http://127.0.0.1:8080`。构造函数允许替换 `serverUrl`。
 - 除设备登录外，FatAI 服务请求都带 `Authorization: Bearer <access_token>`；客户端在每次请求前调用设备登录接口获取令牌。
-- 与 FatAI 服务交互的请求体均为 JSON。同步请求会在后台 FIFO 队列执行；失败只写入 `FatAiServerSync.lastError`，不会自动重试。
+- 与 FatAI 服务交互的请求体均为 JSON。同步请求先写入 SQLite `SyncOutbox`，后台按实体序号发送并自动重试；任务状态、失败码和错误信息均持久化，应用重启后会恢复未完成任务。
 - 工具请求不带认证头。模型厂商直连使用其配置的 `baseUrl` 与 `Authorization: Bearer <apiKey>`。
 
 ### FatAI 服务认证与聊天
@@ -23,18 +23,26 @@
 
 ### FatAI 服务同步接口
 
-下表请求均由 `FatAiServerSync` 后台顺序发送，均需要 Bearer 令牌。它们将客户端本地缓存镜像到服务端；本地写入不会等待同步成功。
+下表请求均由 `FatAiServerSync` 后台发送，均需要 Bearer 令牌。客户端本地写入不会阻塞等待网络；远程回写直接更新本地缓存，不会重新进入 outbox。
 
 | 方法与路径 | 用途 | JSON 请求参数 |
 | --- | --- | --- |
 | `POST /v1/workspaces` | 新建或更新工作空间镜像。由工作空间创建/更新及初始化 Inbox 时调用。 | `id`、`name`、`system_prompt`。 |
 | `POST /v1/conversations` | 新建或更新会话镜像。创建会话和发送消息前调用。 | `id`、`workspace_id`、`title`、`provider_type`、`model`。 |
 | `POST /v1/conversations/{conversationId}/messages` | 上传一条已持久化的用户或助手消息。路径参数 `conversationId` 必须与消息归属一致。 | `id`、`role`（`user` 或 `assistant`）、`content`、`reasoning_content`、`content_type`。 |
-| `POST /v1/memories` | 上传新保存的记忆。归档操作当前只写本地数据库，不会调用此接口。 | `id`、`scope`（`GLOBAL`/`WORKSPACE`/`CONVERSATION`）、`content`、`workspace_id`（可空）、`conversation_id`（可空）、`kind`（`FACT`/`SUMMARY`）。 |
-| `POST /v1/prompt-templates` | 上传新建的提示词模板。模板更新与删除当前只写本地数据库，不会同步。 | `id`、`name`、`content`、`workspace_id`（可空）、`priority`、`is_enabled`。 |
+| `POST /v1/memories` | 通过通用同步协议上传记忆新增、更新和归档状态。 | `id`、`scope`（`GLOBAL`/`WORKSPACE`/`CONVERSATION`）、`content`、`workspace_id`（可空）、`conversation_id`（可空）、`kind`（`FACT`/`SUMMARY`）、`is_archived`。 |
+| `POST /v1/prompt-templates` | 通过通用同步协议上传提示词模板新增、更新和删除。 | `id`、`name`、`content`、`workspace_id`（可空）、`priority`、`is_enabled`。 |
 | `POST /v1/model-configurations` | 上传模型配置和 API Key。API Key 不在本地长期保存，添加/导入旧配置或迁移旧本地密钥时调用。 | `id`、`name`、`provider_type`、`api_key`、`base_url`、`model`、`is_active`。 |
 | `POST /v1/model-configurations/{id}/activate` | 将指定模型配置设为服务端活动配置。 | 空对象 `{}`；路径参数 `id` 为本地模型配置 ID。 |
 | `DELETE /v1/model-configurations/{id}` | 删除服务端模型配置。 | 无请求体；路径参数 `id` 为配置 ID。服务端返回 404 被视为成功。 |
+
+### 双向同步接口
+
+| 方法与路径 | 用途 | 关键参数 |
+| --- | --- | --- |
+| `POST /v1/sync/operations` | 上传一个持久化 outbox 任务。 | `operation_id`、`entity_type`、`entity_id`、`operation`、`sequence`、`schema_version`、`payload`。重复 `operation_id` 幂等，旧 `sequence` 不覆盖新状态。 |
+| `GET /v1/sync/snapshot` | 本地 cursor 为 `0` 且无待上传任务时，重建完整本地缓存。 | Bearer 令牌；返回 `entities` 和当前 `cursor`。 |
+| `GET /v1/sync/changes?cursor=&limit=` | 按 cursor 拉取其他设备或服务端产生的增量变更。 | `cursor`、`limit`；客户端按返回顺序落库后再更新 cursor。 |
 
 ### 本地工具服务接口
 
@@ -82,6 +90,8 @@
 | `PromptTemplate` | 提示词模板：`id`、`userId`、`name`、`content`、`workspaceId?`、`priority`、`isEnabled`、时间。 |
 | `FileAsset` | 已选附件的本地元数据：`id`、`userId`、`workspaceId?`、`conversationId?`、`messageId?`、文件名、MIME、`localPath`、`sizeBytes`、`createdAt`。文件内容不写入数据库。 |
 | `AppSetting` | 按用户保存的键值设置：`userId` + `key` 为联合主键，另有 `value`、`updatedAt`。主题和 FatAI 设备 ID 使用此表。 |
+| `SyncSequence` | 每个实体的本地单调序号，避免乱序操作覆盖。 |
+| `SyncOutbox` | 持久化同步任务：状态包括 `PENDING`、`SENDING`、`RETRYING`、`FAILED`，并记录重试次数及错误分类。 |
 
 ### 用户与应用设置
 
@@ -90,6 +100,7 @@
 | `selectUserById` | `UserRepository.currentUser`、默认用户存在性检查。 | `id`。 | 读取一条 `UserAccount`。 |
 | `insertUser` | `UserRepository` 首次初始化默认用户。 | `id`、`name`、`createdAt`、`updatedAt`。 | 新增一条 `UserAccount`。 |
 | `selectAppSetting` | `SettingsRepository.getValue`、启动时读取主题、取得 FatAI 设备 ID。 | `userId`、`key`。 | 读取一个设置值。 |
+| `upsertAppSetting`、`deleteRemoteSetting` | 设置本地值及应用服务端下行删除。 | `userId`、`key`、`value`、`updatedAt`。 | 幂等写入或删除 `AppSetting`。 |
 | `upsertAppSetting` | `SettingsRepository.putValue`、`setThemeMode`、创建设备 ID。 | `userId`、`key`、`value`、`updatedAt`。 | `INSERT OR REPLACE` 写入设置。 |
 
 ### 会话与消息
@@ -141,13 +152,20 @@
 | `archiveWorkspace` | `WorkspaceRepository.archive`。 | `isArchived`、`updatedAt`、`id`、`userId`。 | 归档或恢复工作空间；Inbox 不允许归档。 |
 | `selectMemoriesForContext` | `MemoryRepository.recall`，由上下文组装调用。 | `userId`、`workspaceId?`、`conversationId?`、`limit`（默认 20）。 | 读取未归档的全局、匹配工作空间或匹配会话记忆，按更新时间倒序。 |
 | `insertMemory` | `MemoryRepository.save`、`upsertGlobalFact`。 | `id`、`userId`、`scope`、`workspaceId?`、`conversationId?`、`kind`、`content`、`createdAt`、`updatedAt`、`isArchived`。 | 插入记忆；正常保存后异步同步到服务端。 |
-| `archiveMemory` | `MemoryRepository.archive`。 | `isArchived`、`updatedAt`、`id`、`userId`。 | 软删除一条记忆。 |
+| `archiveMemory` | `MemoryRepository.archive`。 | `isArchived`、`updatedAt`、`id`、`userId`。 | 软删除一条记忆，并进入同步 outbox。 |
 | `selectActiveGlobalFactByContent` | `MemoryRepository.upsertGlobalFact`。 | `userId`、`content`。 | 检查相同未归档全局事实是否已存在。 |
 | `archiveGlobalFactsByPrefix` | `MemoryRepository.upsertGlobalFact`。 | `updatedAt`、`userId`、`prefix`。 | 软删除相同逻辑键（`"key: "` 前缀）的旧事实。 |
 | `selectEnabledPromptTemplates` | `PromptTemplateRepository.enabledFor`，由上下文组装调用。 | `userId`、`workspaceId?`。 | 读取启用的全局模板或匹配工作空间模板，按 `priority DESC, updatedAt DESC` 排序。 |
 | `insertPromptTemplate` | `PromptTemplateRepository.create`。 | `id`、`userId`、`name`、`content`、`workspaceId?`、`priority`、`isEnabled`、`createdAt`、`updatedAt`。 | 新增启用模板，并异步同步到服务端。 |
-| `updatePromptTemplate` | `PromptTemplateRepository.update`。 | `name`、`content`、`priority`、`isEnabled`、`updatedAt`、`id`、`userId`。 | 更新模板；当前不触发服务端同步。 |
-| `deletePromptTemplate` | `PromptTemplateRepository.delete`。 | `id`、`userId`。 | 删除模板；当前不触发服务端同步。 |
+| `updatePromptTemplate` | `PromptTemplateRepository.update`。 | `name`、`content`、`priority`、`isEnabled`、`updatedAt`、`id`、`userId`。 | 更新模板并进入同步 outbox。 |
+| `deletePromptTemplate` | `PromptTemplateRepository.delete`。 | `id`、`userId`。 | 删除模板并进入同步 outbox。 |
+
+同步回写使用以下幂等 SQLDelight 查询：`upsertRemoteWorkspace`、`deleteRemoteWorkspace`、
+`upsertRemoteConversation`、`deleteRemoteConversation`、`upsertRemoteMessage`、
+`deleteRemoteMessage`、`upsertRemoteMemory`、`deleteRemoteMemory`、
+`upsertRemotePromptTemplate`、`deleteRemotePromptTemplate`、`upsertRemoteApiKey`、
+`deleteRemoteApiKey` 和 `upsertSyncSequence`。这些查询由 `SyncRemoteStore` 调用，不会触发
+本地业务 Repository 的再次同步。
 
 ### 文件附件
 

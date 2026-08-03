@@ -297,6 +297,9 @@ DELETE FROM FileAsset WHERE id = :id AND userId = :userId;
 selectAppSetting:
 SELECT * FROM AppSetting WHERE userId = :userId AND key = :key;
 
+deleteRemoteSetting:
+DELETE FROM AppSetting WHERE userId = :userId AND key = :key;
+
 upsertAppSetting:
 INSERT OR REPLACE INTO AppSetting(userId, key, value, updatedAt) VALUES (:userId, :key, :value, :updatedAt);
 
@@ -317,6 +320,10 @@ VALUES (:userId, :entityType, :entityId, :sequence);
 updateSyncSequence:
 UPDATE SyncSequence SET sequence = :sequence
 WHERE userId = :userId AND entityType = :entityType AND entityId = :entityId;
+
+upsertSyncSequence:
+INSERT OR REPLACE INTO SyncSequence(userId, entityType, entityId, sequence)
+VALUES (:userId, :entityType, :entityId, :sequence);
 
 insertSyncOutbox:
 INSERT INTO SyncOutbox(
@@ -360,3 +367,55 @@ DELETE FROM SyncOutbox WHERE id = :id AND userId = :userId;
 countPendingSyncOutbox:
 SELECT COUNT(*) FROM SyncOutbox
 WHERE userId = :userId AND status IN ('PENDING', 'SENDING', 'RETRYING');
+
+upsertRemoteWorkspace:
+INSERT OR REPLACE INTO Workspace(id, userId, name, systemPrompt, createdAt, updatedAt, isArchived)
+VALUES (:id, :userId, :name, :systemPrompt, :createdAt, :updatedAt, :isArchived);
+
+deleteRemoteWorkspace:
+DELETE FROM Workspace WHERE id = :id AND userId = :userId;
+
+upsertRemoteConversation:
+INSERT OR REPLACE INTO Conversation(
+    id, userId, title, workspaceId, providerType, model, createdAt, updatedAt, isPinned, isArchived
+)
+VALUES (:id, :userId, :title, :workspaceId, :providerType, :model, :createdAt, :updatedAt, :isPinned, :isArchived);
+
+deleteRemoteConversation:
+DELETE FROM Conversation WHERE id = :id AND userId = :userId;
+
+upsertRemoteMessage:
+INSERT OR REPLACE INTO ChatItem(
+    id, userId, conversationId, content, markdownDocument, type, contentType, createdAt
+)
+VALUES (:id, :userId, :conversationId, :content, :markdownDocument, :type, :contentType, :createdAt);
+
+deleteRemoteMessage:
+DELETE FROM ChatItem WHERE id = :id AND userId = :userId;
+
+upsertRemoteMemory:
+INSERT OR REPLACE INTO MemoryEntry(
+    id, userId, scope, workspaceId, conversationId, kind, content, createdAt, updatedAt, isArchived
+)
+VALUES (:id, :userId, :scope, :workspaceId, :conversationId, :kind, :content, :createdAt, :updatedAt, :isArchived);
+
+deleteRemoteMemory:
+DELETE FROM MemoryEntry WHERE id = :id AND userId = :userId;
+
+upsertRemotePromptTemplate:
+INSERT OR REPLACE INTO PromptTemplate(
+    id, userId, name, content, workspaceId, priority, isEnabled, createdAt, updatedAt
+)
+VALUES (:id, :userId, :name, :content, :workspaceId, :priority, :isEnabled, :createdAt, :updatedAt);
+
+deleteRemotePromptTemplate:
+DELETE FROM PromptTemplate WHERE id = :id AND userId = :userId;
+
+upsertRemoteApiKey:
+INSERT OR REPLACE INTO ApiKey(
+    id, userId, providerType, name, apiKey, baseUrl, model, isActive, createdAt
+)
+VALUES (:id, :userId, :providerType, :name, '', :baseUrl, :model, :isActive, :createdAt);
+
+deleteRemoteApiKey:
+DELETE FROM ApiKey WHERE id = :id AND userId = :userId;
