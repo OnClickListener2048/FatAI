@@ -11,6 +11,12 @@ import kotlinx.serialization.json.JsonElement
 interface Tool {
     val definition: ToolDefinition
 
+    /**
+     * Whether an LLM may request this tool directly. Some tools are invoked only by the
+     * application after the user has explicitly supplied their input, such as file attachments.
+     */
+    val isModelCallable: Boolean get() = true
+
     suspend fun execute(arguments: Map<String, String>): ToolResult
 }
 
@@ -78,6 +84,7 @@ class ToolRegistry(
     }
 
     fun definitions(): List<ToolDefinition> = toolsByName.values
+        .filter(Tool::isModelCallable)
         .map(Tool::definition)
         .sortedBy(ToolDefinition::name)
 

@@ -8,10 +8,15 @@ import ai.fatai.chat.markdown.MarkdownParser
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -28,6 +33,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
@@ -181,30 +188,37 @@ private fun MarkdownTable(
     val columns = maxOf(table.header.size, table.rows.maxOfOrNull { it.size } ?: 0)
     if (columns == 0) return
 
-    val cellWidth = if (compactLayout) 130.dp else 160.dp
+    val minimumCellWidth = if (compactLayout) 130.dp else 160.dp
     val scrollState = rememberScrollState()
-    Column(
+    BoxWithConstraints(
         modifier = Modifier
             .fillMaxWidth()
-            .horizontalScroll(scrollState)
             .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(6.dp))
             .clip(RoundedCornerShape(6.dp))
     ) {
-        MarkdownTableRow(
-            cells = table.header,
-            columns = columns,
-            cellWidth = cellWidth,
-            bodyStyle = bodyStyle.copy(fontWeight = FontWeight.SemiBold),
-            background = MaterialTheme.colorScheme.surfaceVariant
-        )
-        table.rows.forEach { row ->
-            MarkdownTableRow(
-                cells = row,
-                columns = columns,
-                cellWidth = cellWidth,
-                bodyStyle = bodyStyle,
-                background = Color.Transparent
-            )
+        val tableWidth = maxOf(maxWidth, minimumCellWidth * columns)
+        val cellWidth = tableWidth / columns
+        Box(Modifier.fillMaxWidth().horizontalScroll(scrollState)) {
+            Column(Modifier.width(tableWidth)) {
+                MarkdownTableRow(
+                    cells = table.header,
+                    columns = columns,
+                    cellWidth = cellWidth,
+                    bodyStyle = bodyStyle.copy(fontWeight = FontWeight.SemiBold),
+                    background = MaterialTheme.colorScheme.surfaceVariant,
+                    drawBottomDivider = true
+                )
+                table.rows.forEachIndexed { index, row ->
+                    MarkdownTableRow(
+                        cells = row,
+                        columns = columns,
+                        cellWidth = cellWidth,
+                        bodyStyle = bodyStyle,
+                        background = Color.Transparent,
+                        drawBottomDivider = index < table.rows.lastIndex
+                    )
+                }
+            }
         }
     }
 }
@@ -215,20 +229,41 @@ private fun MarkdownTableRow(
     columns: Int,
     cellWidth: androidx.compose.ui.unit.Dp,
     bodyStyle: androidx.compose.ui.text.TextStyle,
-    background: Color
+    background: Color,
+    drawBottomDivider: Boolean
 ) {
-    Row {
+    val dividerColor = MaterialTheme.colorScheme.outlineVariant
+    Row(modifier = Modifier.height(IntrinsicSize.Min)) {
         repeat(columns) { index ->
             MarkdownRichText(
                 inlines = cells.getOrElse(index) { emptyList() },
                 bodyStyle = bodyStyle,
                 modifier = Modifier
                     .widthIn(min = cellWidth, max = cellWidth)
-                    .border(0.5.dp, MaterialTheme.colorScheme.outlineVariant)
+                    .fillMaxHeight()
                     .background(background)
+                    .tableCellDividers(
+                        color = dividerColor,
+                        drawRightDivider = index < columns - 1,
+                        drawBottomDivider = drawBottomDivider
+                    )
                     .padding(horizontal = 8.dp, vertical = 6.dp)
             )
         }
+    }
+}
+
+private fun Modifier.tableCellDividers(
+    color: Color,
+    drawRightDivider: Boolean,
+    drawBottomDivider: Boolean
+): Modifier = drawBehind {
+    val strokeWidth = 1.dp.toPx()
+    if (drawRightDivider) {
+        drawLine(color, Offset(size.width, 0f), Offset(size.width, size.height), strokeWidth)
+    }
+    if (drawBottomDivider) {
+        drawLine(color, Offset(0f, size.height), Offset(size.width, size.height), strokeWidth)
     }
 }
 

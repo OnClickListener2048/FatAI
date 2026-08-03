@@ -60,7 +60,8 @@ actual class DatabaseDriverFactory {
     /** Recovers databases created by older desktop builds that did not persist user_version. */
     private fun inferSchemaVersion(path: String): Long? = withConnection(path) { connection ->
         when {
-            hasTable(connection, "UserAccount") -> WatsonDatabase.Schema.version
+            hasTable(connection, "UserAccount") ->
+                if (hasTable(connection, "SyncOutbox")) WatsonDatabase.Schema.version else 7L
             hasColumn(connection, "FileAsset", "messageId") -> 6L
             hasColumn(connection, "ChatItem", "contentType") -> 5L
             hasTable(connection, "AppSetting") -> 4L

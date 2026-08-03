@@ -103,6 +103,32 @@ CREATE TABLE AppSetting (
     PRIMARY KEY (userId, key)
 );
 
+CREATE TABLE SyncSequence (
+    userId TEXT NOT NULL REFERENCES UserAccount(id),
+    entityType TEXT NOT NULL,
+    entityId TEXT NOT NULL,
+    sequence INTEGER NOT NULL,
+    PRIMARY KEY (userId, entityType, entityId)
+);
+
+CREATE TABLE SyncOutbox (
+    id TEXT NOT NULL PRIMARY KEY,
+    userId TEXT NOT NULL REFERENCES UserAccount(id),
+    entityType TEXT NOT NULL,
+    entityId TEXT NOT NULL,
+    operation TEXT NOT NULL CHECK(operation IN ('UPSERT', 'DELETE')),
+    sequence INTEGER NOT NULL,
+    schemaVersion INTEGER NOT NULL DEFAULT 1,
+    payload TEXT NOT NULL,
+    createdAt INTEGER NOT NULL,
+    attemptCount INTEGER NOT NULL DEFAULT 0,
+    nextAttemptAt INTEGER NOT NULL DEFAULT 0,
+    status TEXT NOT NULL DEFAULT 'PENDING',
+    lastErrorCode TEXT,
+    lastErrorMessage TEXT,
+    updatedAt INTEGER NOT NULL
+);
+
 selectAllOrderedByTime:
 SELECT * FROM ChatItem WHERE conversationId = :conversationId AND userId = :userId ORDER BY createdAt ASC;
 
@@ -185,6 +211,9 @@ UPDATE ApiKey SET isActive = :isActive WHERE id = :id AND userId = :userId;
 
 deactivateAllApiKeys:
 UPDATE ApiKey SET isActive = 0 WHERE userId = :userId;
+
+clearApiKeySecret:
+UPDATE ApiKey SET apiKey = '' WHERE id = :id AND userId = :userId;
 
 deleteApiKey:
 DELETE FROM ApiKey WHERE id = :id AND userId = :userId;
@@ -276,3 +305,58 @@ SELECT * FROM UserAccount WHERE id = :id;
 
 insertUser:
 INSERT INTO UserAccount(id, name, createdAt, updatedAt) VALUES (:id, :name, :createdAt, :updatedAt);
+
+selectSyncSequence:
+SELECT sequence FROM SyncSequence
+WHERE userId = :userId AND entityType = :entityType AND entityId = :entityId;
+
+insertSyncSequence:
+INSERT INTO SyncSequence(userId, entityType, entityId, sequence)
+VALUES (:userId, :entityType, :entityId, :sequence);
+
+updateSyncSequence:
+UPDATE SyncSequence SET sequence = :sequence
+WHERE userId = :userId AND entityType = :entityType AND entityId = :entityId;
+
+insertSyncOutbox:
+INSERT INTO SyncOutbox(
+    id, userId, entityType, entityId, operation, sequence, schemaVersion, payload,
+    createdAt, attemptCount, nextAttemptAt, status, lastErrorCode, lastErrorMessage, updatedAt
+)
+VALUES (
+    :id, :userId, :entityType, :entityId, :operation, :sequence, :schemaVersion, :payload,
+    :createdAt, 0, :nextAttemptAt, 'PENDING', NULL, NULL, :updatedAt
+);
+
+selectPendingSyncOutbox:
+SELECT * FROM SyncOutbox
+WHERE userId = :userId AND status IN ('PENDING', 'RETRYING') AND nextAttemptAt <= :now
+ORDER BY sequence ASC, createdAt ASC
+LIMIT :limit;
+
+markSyncOutboxSending:
+UPDATE SyncOutbox SET status = 'SENDING', updatedAt = :updatedAt
+WHERE id = :id AND userId = :userId;
+
+recoverSyncOutbox:
+UPDATE SyncOutbox SET status = 'RETRYING', nextAttemptAt = :nextAttemptAt, updatedAt = :updatedAt
+WHERE userId = :userId AND status = 'SENDING';
+
+markSyncOutboxRetrying:
+UPDATE SyncOutbox SET
+    status = 'RETRYING', attemptCount = :attemptCount, nextAttemptAt = :nextAttemptAt,
+    lastErrorCode = :lastErrorCode, lastErrorMessage = :lastErrorMessage, updatedAt = :updatedAt
+WHERE id = :id AND userId = :userId;
+
+markSyncOutboxFailed:
+UPDATE SyncOutbox SET
+    status = 'FAILED', attemptCount = :attemptCount,
+    lastErrorCode = :lastErrorCode, lastErrorMessage = :lastErrorMessage, updatedAt = :updatedAt
+WHERE id = :id AND userId = :userId;
+
+deleteSyncOutbox:
+DELETE FROM SyncOutbox WHERE id = :id AND userId = :userId;
+
+countPendingSyncOutbox:
+SELECT COUNT(*) FROM SyncOutbox
+WHERE userId = :userId AND status IN ('PENDING', 'SENDING', 'RETRYING');

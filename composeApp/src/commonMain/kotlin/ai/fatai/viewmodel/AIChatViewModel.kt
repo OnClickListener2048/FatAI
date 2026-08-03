@@ -21,6 +21,8 @@ import ai.fatai.chat.ProviderType
 import ai.fatai.core.context.ContextEngine
 import ai.fatai.core.context.ContextRequest
 import ai.fatai.feature.model.ModelGateway
+import ai.fatai.feature.model.DEFAULT_FAT_AI_SERVER_URL
+import ai.fatai.feature.model.FatAiServerSync
 import ai.fatai.feature.files.FileAsset
 import ai.fatai.feature.files.FileAssetRepository
 import ai.fatai.feature.memory.ConversationMemoryService
@@ -77,7 +79,8 @@ class AIChatViewModel(
     private val conversationMemoryService: ConversationMemoryService,
     private val userMemoryExtractionService: UserMemoryExtractionService,
     private val toolRegistry: ToolRegistry,
-    private val currentUser: CurrentUserProvider
+    private val currentUser: CurrentUserProvider,
+    private val serverSync: FatAiServerSync
 ) {
 
     private val screenModelScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
@@ -121,6 +124,9 @@ class AIChatViewModel(
             messageAttachments = emptyMap(),
             inputText = ""
         )
+        workspaceRepository.getAll().forEach { workspace ->
+            serverSync.syncWorkspace(workspace.id, workspace.name, workspace.systemPrompt)
+        }
         loadActiveConfig()
         selectedConversationId?.let(::selectConversation)
     }
@@ -150,6 +156,7 @@ class AIChatViewModel(
     fun createWorkspace(name: String, systemPrompt: String = "") {
         if (name.isBlank()) return
         val workspace = workspaceRepository.create(name, systemPrompt)
+        serverSync.syncWorkspace(workspace.id, workspace.name, workspace.systemPrompt)
         loadWorkspaces()
         selectWorkspace(workspace.id)
     }
@@ -174,8 +181,10 @@ class AIChatViewModel(
             activeConfig = activeKey?.let { key ->
                 ProviderConfig(
                     apiKey = key.apiKey,
-                    baseUrl = key.baseUrl.ifBlank { key.providerType.defaultBaseUrl },
+                    baseUrl = key.baseUrl,
                     model = key.model.ifBlank { key.providerType.defaultModel },
+                    configurationId = key.id,
+                    configurationName = key.name,
                     providerType = key.providerType
                 )
             }
@@ -192,8 +201,10 @@ class AIChatViewModel(
             activeProvider = keyInfo.providerType,
             activeConfig = ProviderConfig(
                 apiKey = keyInfo.apiKey,
-                baseUrl = keyInfo.baseUrl.ifBlank { keyInfo.providerType.defaultBaseUrl },
+                baseUrl = keyInfo.baseUrl,
                 model = keyInfo.model.ifBlank { keyInfo.providerType.defaultModel },
+                configurationId = keyInfo.id,
+                configurationName = keyInfo.name,
                 providerType = keyInfo.providerType
             )
         )
@@ -210,6 +221,13 @@ class AIChatViewModel(
             workspaceId = _state.value.currentWorkspaceId,
             providerType = provider,
             model = config.model
+        )
+        serverSync.syncConversation(
+            id = conversation.id,
+            workspaceId = conversation.workspaceId,
+            title = conversation.title,
+            providerType = conversation.providerType.name,
+            model = conversation.model
         )
         _state.value = _state.value.copy(
             currentConversationId = conversation.id,
@@ -280,7 +298,7 @@ class AIChatViewModel(
         _state.value = _state.value.copy(attachments = fileAssetRepository.pendingForConversation(conversationId))
     }
 
-    fun sendMessage() {
+    fun sendMessage(analyzeAttachedFilePrompt: String) {
         val text = _state.value.inputText.trim()
         val pendingAttachments = _state.value.attachments
         if ((text.isBlank() && pendingAttachments.isEmpty()) || _state.value.isStreaming) return
@@ -298,13 +316,27 @@ class AIChatViewModel(
                 model = config.model
             )
             conversationId = conversation.id
+            serverSync.syncConversation(
+                id = conversation.id,
+                workspaceId = conversation.workspaceId,
+                title = conversation.title,
+                providerType = conversation.providerType.name,
+                model = conversation.model
+            )
         }
 
         val userMsg = chatRepository.insertMessage(
             conversationId = conversationId,
-            content = text.ifBlank { "Please analyze the attached file." },
+            content = text.ifBlank { analyzeAttachedFilePrompt },
             type = ChatItemType.Question,
             contentType = MessageContentType.Text
+        )
+        serverSync.syncMessage(
+            id = userMsg.id,
+            conversationId = userMsg.conversationId,
+            role = "user",
+            content = userMsg.content,
+            contentType = userMsg.contentType.name
         )
         screenModelScope.launch {
             userMemoryExtractionService.rememberFromUserInput(userMsg.content, config)
@@ -319,10 +351,14 @@ class AIChatViewModel(
             messageAttachments = _state.value.messageAttachments + (userMsg.id to pendingAttachments)
         )
         loadConversations()
-        streamChat(conversationId, messages)
+        streamChat(conversationId, messages, pendingAttachments)
     }
 
-    private fun streamChat(conversationId: String, messages: List<ChatItem>) {
+    private fun streamChat(
+        conversationId: String,
+        messages: List<ChatItem>,
+        attachments: List<FileAsset> = emptyList()
+    ) {
         val config = _state.value.activeConfig ?: return
         @OptIn(ExperimentalUuidApi::class, kotlin.time.ExperimentalTime::class)
         var assistantMsg = ChatItem(
@@ -351,15 +387,41 @@ class AIChatViewModel(
                     ChatMessage(role = if (it.type == ChatItemType.Question) "user" else "assistant", content = it.content)
                 }
 
+                val isAttachmentAnalysis = attachments.isNotEmpty()
                 val prompt = contextEngine.build(
                     ContextRequest(
-                        workspace = workspaceRepository.getById(_state.value.currentWorkspaceId),
-                        conversationId = conversationId,
-                        history = history
+                        workspace = if (isAttachmentAnalysis) null else workspaceRepository.getById(_state.value.currentWorkspaceId),
+                        conversationId = if (isAttachmentAnalysis) null else conversationId,
+                        history = if (isAttachmentAnalysis) history.takeLast(1) else history,
+                        includeContextualReferences = !isAttachmentAnalysis
                     )
                 )
+                val documentExecutions = if (attachments.isEmpty()) {
+                    emptyList()
+                } else {
+                    _state.value = _state.value.copy(assistantActivity = AssistantActivity.UsingTool)
+                    attachments.map { attachment ->
+                        toolRegistry.execute(
+                            ToolCall(
+                                "docling_document_read",
+                                mapOf(
+                                    "local_path" to attachment.localPath,
+                                    "display_name" to attachment.displayName,
+                                    "mime_type" to attachment.mimeType
+                                )
+                            )
+                        )
+                    }.also {
+                        _state.value = _state.value.copy(assistantActivity = AssistantActivity.Thinking)
+                    }
+                }
+                val promptWithDocuments = if (documentExecutions.isEmpty()) {
+                    prompt
+                } else {
+                    prompt + ChatMessage(role = "system", content = formatToolResults(documentExecutions))
+                }
                 val toolCalls = collectModelResponse(
-                    prompt = prompt,
+                    prompt = promptWithDocuments,
                     config = config,
                     includeTools = true,
                     onContent = { content ->
@@ -388,7 +450,7 @@ class AIChatViewModel(
                     }
                     _state.value = _state.value.copy(assistantActivity = AssistantActivity.Thinking)
                     collectModelResponse(
-                        prompt = prompt + ChatMessage(
+                        prompt = promptWithDocuments + ChatMessage(
                             role = "system",
                             content = formatToolResults(toolResults)
                         ),
@@ -413,7 +475,10 @@ class AIChatViewModel(
                         }
                         }
                     )
-                    assistantMsg = assistantMsg.withToolSources(toolResults)
+                    assistantMsg = assistantMsg.withToolSources(documentExecutions + toolResults)
+                    updateMessageInState(assistantMsg)
+                } else if (documentExecutions.isNotEmpty()) {
+                    assistantMsg = assistantMsg.withToolSources(documentExecutions)
                     updateMessageInState(assistantMsg)
                 }
                 if (!shouldStopStream) {
@@ -518,7 +583,16 @@ class AIChatViewModel(
         assistantMsg: ChatItem,
         config: ProviderConfig
     ) {
-        chatRepository.insertMessage(conversationId, assistantMsg.content, ChatItemType.Answer)
+        chatRepository.insertMessage(conversationId, assistantMsg.content, ChatItemType.Answer).also { message ->
+            serverSync.syncMessage(
+                id = message.id,
+                conversationId = message.conversationId,
+                role = "assistant",
+                content = message.content,
+                contentType = message.contentType.name,
+                reasoningContent = assistantMsg.reasoningContent
+            )
+        }
         if (chatRepository.getMessageCount(conversationId) <= 2) {
             messages.firstOrNull { it.type == ChatItemType.Question }?.let { firstMsg ->
                 chatRepository.updateConversationTitle(conversationId, generateTitle(firstMsg.content))
@@ -573,7 +647,7 @@ class AIChatViewModel(
             messages = filteredMsgs,
             isLoading = false
         )
-        streamChat(convId, filteredMsgs)
+        streamChat(convId, filteredMsgs, _state.value.messageAttachments[lastQuestion.id].orEmpty())
     }
 
     fun continueGeneration() {

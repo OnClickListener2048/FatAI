@@ -8,6 +8,8 @@
     <string name="create_workspace">Create workspace</string>
     <string name="search_chats">Search chats</string>
     <string name="attach_file">Attach file</string>
+    <string name="back_to_bottom">Back to bottom</string>
+    <string name="analyze_attached_file">Please analyze the attached file.</string>
     <string name="conversation_actions">Conversation actions</string>
     <string name="pin">Pin</string>
     <string name="unpin">Unpin</string>
@@ -47,6 +49,7 @@
     <string name="add_api_key_description">Connect a model provider to start chatting.</string>
     <string name="user_account">User account</string>
     <string name="provider">Provider</string>
+    <string name="api_key_server_managed">Key stored securely on your FatAI server</string>
     <string name="display_name">Display Name</string>
     <string name="api_key">API Key</string>
     <string name="base_url">Base URL</string>

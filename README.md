@@ -24,7 +24,7 @@ FatAI is a work-in-progress AI assistant. The codebase is organized as KMP featu
 - Android
 - Desktop JVM
 - iOS (`iosArm64` and `iosSimulatorArm64`)
-- A small Ktor server module is present as a sample endpoint; it is not an AI proxy or backend.
+- The FastAPI server lives in `C:\Users\wang2\fat-ai-server` and owns AI backend capabilities.
 
 The application UI is Compose Multiplatform. SQLDelight drivers and Ktor engines are supplied from platform source sets, while feature APIs and domain code live in `commonMain`.
 
@@ -158,15 +158,15 @@ SQLDelight stores users, conversations, messages, provider configurations, works
 ./gradlew :composeApp:compileDebugKotlinAndroid
 ./gradlew :composeApp:compileKotlinIosSimulatorArm64
 
-# Sample Ktor server
-./gradlew :server:run
+# FastAPI server (C:\Users\wang2\fat-ai-server)
+python main.py
 ```
 
-With the server running at `http://127.0.0.1:8080`, desktop chat exposes separate `web_search` and `weather` functions to OpenAI-compatible models. `web_search` calls `POST /v1/tools/search` for general current information. `weather` calls `POST /v1/tools/weather` with an explicit location, ranks Timeanddate weather pages first, and is selected instead of generic web search for weather questions. The keyless development provider extracts DuckDuckGo's HTML web-search results (not its limited Instant Answer API); replace it with a supported production provider such as Tavily, Brave, Bing, or SerpAPI before deployment. For weather and other location-dependent questions, provide a location; FatAI asks for it rather than guessing. Tool-backed responses retain a markdown **Information sources** section, and the chat bubble says **Searching…** or **Checking weather…** instead of showing a disruptive tool toast.
+With the FastAPI server running at `http://127.0.0.1:8080`, desktop chat streams model requests through the server and exposes separate `web_search` and `weather` functions to OpenAI-compatible models. Workspace, conversation, message, memory, and prompt-template writes are mirrored to the authenticated Python backend; SQLDelight remains the app's offline cache during this transition.
 
-The server keeps these boundaries in separate source files: `WebSearch.kt` owns general search contracts and the shared DuckDuckGo HTML transport, while `Weather.kt` owns the weather contract and Timeanddate-specific ranking.
+### Server migration status
 
-If your network requires an HTTP proxy, the server honors `HTTPS_PROXY`, `HTTP_PROXY`, and `ALL_PROXY` (including lowercase variants) when it fetches search results.
+The FastAPI service owns model credentials, tool endpoints, authentication, and the server data model. The current Compose client is a staged migration: it still renders and reads its local cache, then mirrors core writes to the server. Full server-authoritative reads, two-way reconciliation, object storage plus asynchronous RAG indexing, and durable multi-step Agent workflows are not implemented yet. See `C:\Users\wang2\fat-ai-server\README.md` for API and deployment configuration.
 
 Open `iosApp/` in Xcode to run the iOS app.
 
