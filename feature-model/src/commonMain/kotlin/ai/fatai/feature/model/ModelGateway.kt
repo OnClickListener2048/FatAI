@@ -13,7 +13,13 @@ data class ChatContext(
     val conversationId: String? = null,
     val responseLanguageTag: String? = null,
     /** Formatted, transient tool results (e.g. document reads) appended after history by the server. */
-    val toolResults: List<String> = emptyList()
+    val toolResults: List<String> = emptyList(),
+    /** Disables templates, workspace instructions and memories for isolated work (attachment analysis). */
+    val includeContextualReferences: Boolean = true,
+    /** Client-owned id the server persists the user turn under. */
+    val userMessageId: String? = null,
+    /** Client-owned id the server persists the assistant answer under. */
+    val assistantMessageId: String? = null
 )
 
 /** Model feature boundary. New providers only need to implement this gateway or a ChatProvider adapter. */

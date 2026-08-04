@@ -157,9 +157,10 @@ class ChatRepository(
         conversationId: String,
         content: String,
         type: ChatItemType,
-        contentType: MessageContentType = MessageContentType.Markdown
+        contentType: MessageContentType = MessageContentType.Markdown,
+        id: String = Uuid.random().toString(),
+        sync: Boolean = true
     ): ChatItem {
-        val id = Uuid.random().toString()
         val time = now()
         val markdownDocument = content
             .takeIf { contentType == MessageContentType.Markdown && it.isNotBlank() }
@@ -174,13 +175,15 @@ class ChatRepository(
             contentType = contentType,
             createdAt = time
         )
-        serverSync?.syncMessage(
-            id = id,
-            conversationId = conversationId,
-            role = if (type == ChatItemType.Question) "user" else "assistant",
-            content = content,
-            contentType = contentType.name
-        )
+        if (sync) {
+            serverSync?.syncMessage(
+                id = id,
+                conversationId = conversationId,
+                role = if (type == ChatItemType.Question) "user" else "assistant",
+                content = content,
+                contentType = contentType.name
+            )
+        }
         updateConversationTimestamp(conversationId)
         return ChatItem(
             id = id,

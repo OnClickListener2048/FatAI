@@ -404,10 +404,13 @@ class AIChatViewModel(
                 val toolResults = documentExecutions.map { execution -> formatToolResult(execution) }
                 val prompt = if (isAttachmentAnalysis) history.takeLast(1) else history
                 val context = ChatContext(
-                    workspaceId = if (isAttachmentAnalysis) null else _state.value.currentWorkspaceId,
-                    conversationId = if (isAttachmentAnalysis) null else conversationId,
+                    workspaceId = _state.value.currentWorkspaceId,
+                    conversationId = conversationId,
                     responseLanguageTag = currentLanguageTag(),
-                    toolResults = toolResults
+                    toolResults = toolResults,
+                    includeContextualReferences = !isAttachmentAnalysis,
+                    userMessageId = messages.lastOrNull { it.type == ChatItemType.Question }?.id,
+                    assistantMessageId = assistantMsg.id
                 )
                 val toolCalls = collectModelResponse(
                     prompt = prompt,
@@ -459,6 +462,17 @@ class AIChatViewModel(
                 )
                 updateMessageInState(assistantMsg)
                 _state.value = _state.value.copy(isStreaming = false, assistantActivity = null)
+                // The server persists chat turns only when the stream completes; enqueue the
+                // question so it still reaches the server when the model call failed.
+                messages.lastOrNull { it.type == ChatItemType.Question }?.let { question ->
+                    serverSync.syncMessage(
+                        id = question.id,
+                        conversationId = question.conversationId,
+                        role = "user",
+                        content = question.content,
+                        contentType = question.contentType.name
+                    )
+                }
             }
         }
     }
@@ -553,16 +567,14 @@ class AIChatViewModel(
         assistantMsg: ChatItem,
         config: ProviderConfig
     ) {
-        chatRepository.insertMessage(conversationId, assistantMsg.content, ChatItemType.Answer).also { message ->
-            serverSync.syncMessage(
-                id = message.id,
-                conversationId = message.conversationId,
-                role = "assistant",
-                content = message.content,
-                contentType = message.contentType.name,
-                reasoningContent = assistantMsg.reasoningContent
-            )
-        }
+        // The server persisted this turn during the stream; only the local cache is written here.
+        chatRepository.insertMessage(
+            conversationId,
+            assistantMsg.content,
+            ChatItemType.Answer,
+            id = assistantMsg.id,
+            sync = false
+        )
         if (chatRepository.getMessageCount(conversationId) <= 2) {
             messages.firstOrNull { it.type == ChatItemType.Question }?.let { firstMsg ->
                 chatRepository.updateConversationTitle(conversationId, generateTitle(firstMsg.content))
@@ -596,7 +608,14 @@ class AIChatViewModel(
         val convId = _state.value.currentConversationId ?: return
         val lastAssistant = messages.lastOrNull { it.type == ChatItemType.Answer }
         if (lastAssistant != null && lastAssistant.content.isNotBlank()) {
-            chatRepository.insertMessage(convId, lastAssistant.content, ChatItemType.Answer)
+            // The server saves the partial answer on disconnect with the same id.
+            chatRepository.insertMessage(
+                convId,
+                lastAssistant.content,
+                ChatItemType.Answer,
+                id = lastAssistant.id,
+                sync = false
+            )
         }
     }
 
@@ -658,7 +677,8 @@ class AIChatViewModel(
                 val context = ChatContext(
                     workspaceId = _state.value.currentWorkspaceId,
                     conversationId = convId,
-                    responseLanguageTag = currentLanguageTag()
+                    responseLanguageTag = currentLanguageTag(),
+                    assistantMessageId = assistantMsg.id
                 )
                         modelGateway.stream(history, config, context = context).collect { chunk ->
                             if (shouldStopStream || streamCompleted) return@collect
@@ -680,7 +700,14 @@ class AIChatViewModel(
                             }
                             if (chunk.isDone) {
                                 streamCompleted = true
-                                chatRepository.insertMessage(convId, assistantMsg.content, ChatItemType.Answer)
+                                // The server persisted this answer during the stream.
+                                chatRepository.insertMessage(
+                                    convId,
+                                    assistantMsg.content,
+                                    ChatItemType.Answer,
+                                    id = assistantMsg.id,
+                                    sync = false
+                                )
                                 _state.value = _state.value.copy(isStreaming = false, assistantActivity = null)
                                 loadConversations()
                             }

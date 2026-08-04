@@ -60,6 +60,9 @@ class FatAiServerModelGateway(
                         conversationId = context.conversationId,
                         responseLanguageTag = context.responseLanguageTag,
                         toolResults = context.toolResults,
+                        includeContextualReferences = context.includeContextualReferences,
+                        userMessageId = context.userMessageId,
+                        assistantMessageId = context.assistantMessageId,
                         tools = tools.map { definition ->
                             ServerToolDefinition(
                                 name = definition.name,
@@ -125,6 +128,9 @@ private data class ServerChatStreamRequest(
     @SerialName("conversation_id") val conversationId: String? = null,
     @SerialName("response_language_tag") val responseLanguageTag: String? = null,
     @SerialName("tool_results") val toolResults: List<String> = emptyList(),
+    @SerialName("include_contextual_references") val includeContextualReferences: Boolean = true,
+    @SerialName("user_message_id") val userMessageId: String? = null,
+    @SerialName("assistant_message_id") val assistantMessageId: String? = null,
     val tools: List<ServerToolDefinition> = emptyList()
 )
 
