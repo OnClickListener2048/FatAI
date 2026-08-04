@@ -136,7 +136,7 @@ selectById:
 SELECT * FROM ChatItem WHERE id = :id AND userId = :userId;
 
 insertItem:
-INSERT INTO ChatItem(id, userId, conversationId, content, markdownDocument, type, contentType, createdAt)
+INSERT OR REPLACE INTO ChatItem(id, userId, conversationId, content, markdownDocument, type, contentType, createdAt)
 VALUES (:id, :userId, :conversationId, :content, :markdownDocument, :type, :contentType, :createdAt);
 
 updateContentById:
