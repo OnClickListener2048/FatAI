@@ -47,6 +47,8 @@ class FatAiServerSync(
 ) : SyncMutationSink {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val syncMutex = Mutex()
+    private val tokenMutex = Mutex()
+    private var cachedAccessToken: String? = null
     private val pendingModelUploads = mutableMapOf<String, CompletableDeferred<Unit>>()
     private val _lastError = MutableStateFlow<String?>(null)
     val lastError: StateFlow<String?> = _lastError.asStateFlow()
@@ -123,8 +125,9 @@ class FatAiServerSync(
 
     fun syncModelConfiguration(config: ProviderConfig, isActive: Boolean = true) {
         val configurationId = requireNotNull(config.configurationId) { "A local model configuration is required." }
-        val completion = CompletableDeferred<Unit>()
-        pendingModelUploads[configurationId] = completion
+        // Reuse an in-flight upload's deferred so a second save never leaves the first caller
+        // awaiting a completion that no longer exists.
+        pendingModelUploads.getOrPut(configurationId) { CompletableDeferred() }
         enqueue(
             entityType = "model_configuration",
             entityId = configurationId,
@@ -185,6 +188,7 @@ class FatAiServerSync(
         while (true) {
             runCatching { pullRemoteChanges() }
                 .onFailure { error ->
+                    if ((error as? SyncHttpException)?.status == 401) invalidateAccessToken()
                     _lastError.value = "PULL: " + (error.message ?: "FatAI server pull failed.")
                 }
             delay(5_000)
@@ -242,6 +246,7 @@ class FatAiServerSync(
                 setBody(json.encodeToString(request))
             }
             if (!response.status.isSuccess()) {
+                if (response.status.value == 401) invalidateAccessToken()
                 throw SyncHttpException(response.status.value, response.bodyAsText())
             }
             outbox.markSucceeded(operation.id)
@@ -254,7 +259,8 @@ class FatAiServerSync(
                 else -> "NETWORK"
             }
             val message = error.message ?: "FatAI server synchronization failed."
-            val permanent = error is SyncHttpException && error.status in 400..499 && error.status !in setOf(408, 409, 429)
+            // 401 is transient: the cached token was rejected and will be re-fetched.
+            val permanent = error is SyncHttpException && error.status in 400..499 && error.status !in setOf(401, 408, 409, 429)
             if (permanent) {
                 outbox.markFailed(operation, attempt, code, message)
                 pendingModelUploads.remove(operation.entityId)?.completeExceptionally(error)
@@ -276,6 +282,19 @@ class FatAiServerSync(
 
     @OptIn(ExperimentalUuidApi::class)
     suspend fun accessToken(): String {
+        cachedAccessToken?.let { return it }
+        return tokenMutex.withLock {
+            cachedAccessToken?.let { return it }
+            requestDeviceToken().also { cachedAccessToken = it }
+        }
+    }
+
+    private fun invalidateAccessToken() {
+        cachedAccessToken = null
+    }
+
+    @OptIn(ExperimentalUuidApi::class)
+    private suspend fun requestDeviceToken(): String {
         val deviceId = settings.getValue(DEVICE_ID_KEY) ?: stableDeviceId(currentUser.currentUserId).also {
             settings.putValue(DEVICE_ID_KEY, it)
         }

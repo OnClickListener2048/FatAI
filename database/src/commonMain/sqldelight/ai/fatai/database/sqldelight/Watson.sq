@@ -362,7 +362,7 @@ WHERE id = :id AND userId = :userId;
 
 recoverSyncOutbox:
 UPDATE SyncOutbox SET status = 'RETRYING', nextAttemptAt = :nextAttemptAt, updatedAt = :updatedAt
-WHERE userId = :userId AND status = 'SENDING';
+WHERE userId = :userId AND status IN ('SENDING', 'FAILED');
 
 markSyncOutboxRetrying:
 UPDATE SyncOutbox SET

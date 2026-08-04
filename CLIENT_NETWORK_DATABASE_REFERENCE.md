@@ -46,6 +46,8 @@
 | `GET /v1/sync/snapshot` | 本地 cursor 为 `0` 且无待上传任务时，重建完整本地缓存。 | Bearer 令牌；返回 `entities` 和当前 `cursor`。 |
 | `GET /v1/sync/changes?cursor=&limit=` | 按 cursor 拉取其他设备或服务端产生的增量变更。 | `cursor`、`limit`；客户端按返回顺序落库后再更新 cursor。 |
 
+服务端 REST 写接口（workspaces、conversations、messages、memories、prompt-templates、model-configurations、settings）也会以服务端自增 sequence 写入同一条变更流，因此通过 REST 或服务端生成产生的数据同样能被增量拉取到所有设备。客户端收到的 `401` 会作废缓存令牌并重新获取；启动时 outbox 中 `FAILED` 任务会转为 `RETRYING` 重试一次。
+
 ### 本地工具服务接口
 
 下列接口默认使用同一个 `http://127.0.0.1:8080` 服务地址，但各 Tool 可在构造时替换。工具执行失败会转为 `ToolResult.Failure`，不抛出到聊天 UI。
