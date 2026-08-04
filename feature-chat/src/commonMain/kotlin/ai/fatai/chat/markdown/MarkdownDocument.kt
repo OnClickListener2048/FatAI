@@ -273,7 +273,7 @@ object MarkdownParser {
                 val labelEnd = source.indexOf(']', linkStart + 1)
                 val urlStart = if (labelEnd >= 0 && source.getOrNull(labelEnd + 1) == '(') labelEnd + 2 else -1
                 val urlEnd = if (urlStart >= 0) source.indexOf(')', urlStart) else -1
-                if (labelEnd > linkStart && urlEnd >= urlStart) {
+                if (labelEnd > linkStart && urlStart >= 0 && urlEnd > urlStart) {
                     flushText()
                     result += MarkdownInline.Link(
                         content = parseInlines(source.substring(linkStart + 1, labelEnd)),
