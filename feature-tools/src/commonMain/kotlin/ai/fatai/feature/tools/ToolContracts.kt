@@ -88,6 +88,9 @@ class ToolRegistry(
         .map(Tool::definition)
         .sortedBy(ToolDefinition::name)
 
+    /** Looks up a definition for display purposes without executing the tool. */
+    fun definitionFor(toolName: String): ToolDefinition? = toolsByName[toolName]?.definition
+
     suspend fun execute(call: ToolCall): ToolExecution {
         val tool = toolsByName[call.toolName]
             ?: return ToolExecution(call, ToolResult.Failure("TOOL_NOT_FOUND", "Unknown tool: ${call.toolName}"))

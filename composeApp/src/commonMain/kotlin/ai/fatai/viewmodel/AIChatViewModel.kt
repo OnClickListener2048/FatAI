@@ -441,47 +441,25 @@ class AIChatViewModel(
                         )
                         updateMessageInState(assistantMsg)
                     }
+                    },
+                    onToolCalls = { calls ->
+                        if (calls.isNotEmpty()) _state.value = _state.value.copy(assistantActivity = calls.activity())
                     }
                 )
-                if (toolCalls.isNotEmpty() && !shouldStopStream) {
-                    _state.value = _state.value.copy(assistantActivity = toolCalls.activity())
-                    val toolResults = toolCalls.map { call ->
-                        toolRegistry.execute(ToolCall(call.name, call.arguments))
-                    }
-                    _state.value = _state.value.copy(assistantActivity = AssistantActivity.Thinking)
-                    collectModelResponse(
-                        prompt = promptWithDocuments + ChatMessage(
-                            role = "system",
-                            content = formatToolResults(toolResults)
-                        ),
-                        config = config,
-                        includeTools = false,
-                        onContent = { content ->
-                        if (content.isNotEmpty()) {
-                            assistantMsg = assistantMsg.copy(
-                                content = assistantMsg.content + content,
-                                isLoading = false
-                            )
-                            updateMessageInState(assistantMsg)
-                        }
-                        },
-                        onReasoning = { reasoningContent ->
-                        if (reasoningContent.isNotEmpty()) {
-                            assistantMsg = assistantMsg.copy(
-                                reasoningContent = assistantMsg.reasoningContent + reasoningContent,
-                                isLoading = false
-                            )
-                            updateMessageInState(assistantMsg)
-                        }
-                        }
-                    )
-                    assistantMsg = assistantMsg.withToolSources(documentExecutions + toolResults)
-                    updateMessageInState(assistantMsg)
-                } else if (documentExecutions.isNotEmpty()) {
-                    assistantMsg = assistantMsg.withToolSources(documentExecutions)
-                    updateMessageInState(assistantMsg)
-                }
                 if (!shouldStopStream) {
+                    val serverToolExecutions = toolCalls.map { call ->
+                        ai.fatai.feature.tools.ToolExecution(
+                            call = ToolCall(call.name, call.arguments),
+                            // The server executes the tool; the client only records provenance.
+                            result = ToolResult.Success(""),
+                            toolDisplayName = toolRegistry.definitionFor(call.name)?.displayName
+                        )
+                    }
+                    val referencedExecutions = documentExecutions + serverToolExecutions
+                    if (referencedExecutions.isNotEmpty()) {
+                        assistantMsg = assistantMsg.withToolSources(referencedExecutions)
+                        updateMessageInState(assistantMsg)
+                    }
                     completeAssistantResponse(conversationId, messages, assistantMsg, config)
                 }
             } catch (e: Exception) {
@@ -500,7 +478,8 @@ class AIChatViewModel(
         config: ProviderConfig,
         includeTools: Boolean,
         onContent: suspend (String) -> Unit,
-        onReasoning: suspend (String) -> Unit = {}
+        onReasoning: suspend (String) -> Unit = {},
+        onToolCalls: (List<ai.fatai.feature.tools.ProviderToolCall>) -> Unit = {}
     ): List<ai.fatai.feature.tools.ProviderToolCall> {
         var toolCalls = emptyList<ai.fatai.feature.tools.ProviderToolCall>()
         var lastRenderedAt = 0L
@@ -521,6 +500,10 @@ class AIChatViewModel(
                 // the display frame rate and yield between them.
                 lastRenderedAt = awaitNextStreamFrame(lastRenderedAt)
                 onContent(chunk.content)
+            }
+            if (chunk.toolCalls.isNotEmpty()) {
+                toolCalls = toolCalls + chunk.toolCalls
+                onToolCalls(toolCalls)
             }
             if (chunk.isDone) toolCalls = chunk.toolCalls
         }

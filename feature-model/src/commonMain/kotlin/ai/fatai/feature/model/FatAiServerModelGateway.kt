@@ -90,7 +90,11 @@ class FatAiServerModelGateway(
                             if (payload.content.isNotEmpty()) emit(ChatStreamChunk(content = payload.content))
                         } else if (eventName == "tool_call") {
                             val payload = json.decodeFromString<ServerToolCall>(line.substringAfter(':').trim())
-                            toolCalls += ProviderToolCall(payload.id, payload.name, payload.arguments)
+                            val call = ProviderToolCall(payload.id, payload.name, payload.arguments)
+                            toolCalls += call
+                            // The server executes the tool itself; this chunk only surfaces the
+                            // call for progress display and provenance.
+                            emit(ChatStreamChunk(content = "", toolCalls = listOf(call)))
                         } else if (eventName == "done") {
                             emit(ChatStreamChunk(content = "", isDone = true, toolCalls = toolCalls.toList()))
                         }
