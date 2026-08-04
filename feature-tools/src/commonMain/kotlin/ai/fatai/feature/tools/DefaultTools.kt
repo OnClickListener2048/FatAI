@@ -22,6 +22,7 @@ object DefaultTools {
 }
 
 class CalculatorTool : Tool {
+    override val isModelCallable: Boolean = false
     override val definition = ToolDefinition(
         name = "calculator",
         displayName = "Calculator",
@@ -41,6 +42,7 @@ class CalculatorTool : Tool {
 }
 
 class TextTransformTool : Tool {
+    override val isModelCallable: Boolean = false
     override val definition = ToolDefinition(
         name = "text_transform",
         displayName = "Text transform",
@@ -82,6 +84,7 @@ class TextTransformTool : Tool {
 }
 
 class JsonTool : Tool {
+    override val isModelCallable: Boolean = false
     override val definition = ToolDefinition(
         name = "json",
         displayName = "JSON formatter",
@@ -105,6 +108,7 @@ class JsonTool : Tool {
 }
 
 class CurrentTimeTool : Tool {
+    override val isModelCallable: Boolean = false
     override val definition = ToolDefinition(
         name = "current_time",
         displayName = "Current time",
@@ -118,6 +122,7 @@ class CurrentTimeTool : Tool {
 }
 
 class UuidTool : Tool {
+    override val isModelCallable: Boolean = false
     override val definition = ToolDefinition(
         name = "uuid",
         displayName = "UUID generator",
