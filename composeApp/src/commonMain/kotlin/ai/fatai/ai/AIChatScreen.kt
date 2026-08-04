@@ -51,6 +51,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.OutlinedTextField
@@ -80,6 +81,7 @@ import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import compose.icons.FeatherIcons
@@ -977,47 +979,92 @@ private fun ChatBubble(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun MessageSources(sources: List<MessageSource>) {
-    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        sources.forEach { source ->
-            val host = remember(source.url) { source.url?.let(::faviconHostOf) }
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f))
-                    .clickable(enabled = source.url != null) { source.url?.let(::openUrl) }
-                    .padding(horizontal = 8.dp, vertical = 5.dp)
-            ) {
-                if (host != null) {
-                    coil3.compose.AsyncImage(
-                        model = "https://www.google.com/s2/favicons?domain=$host&sz=32",
-                        contentDescription = null,
-                        contentScale = ContentScale.Crop,
+    var showAll by remember { mutableStateOf(false) }
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .clip(RoundedCornerShape(8.dp))
+            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f))
+            .clickable { showAll = true }
+            .padding(horizontal = 10.dp, vertical = 5.dp)
+    ) {
+        sources.take(3).forEach { source ->
+            SourceFavicon(source)
+            Spacer(Modifier.width(6.dp))
+        }
+        Text(
+            "来源",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
+
+    if (showAll) {
+        ModalBottomSheet(onDismissRequest = { showAll = false }) {
+            Column(modifier = Modifier.padding(horizontal = 16.dp).padding(bottom = 28.dp)) {
+                Text("信息来源", style = MaterialTheme.typography.titleMedium)
+                Spacer(Modifier.height(12.dp))
+                sources.forEach { source ->
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier
-                            .size(18.dp)
-                            .clip(CircleShape)
-                            .background(MaterialTheme.colorScheme.surface)
-                    )
-                } else {
-                    Icon(
-                        FeatherIcons.Globe,
-                        contentDescription = null,
-                        modifier = Modifier.size(18.dp),
-                        tint = MaterialTheme.colorScheme.primary
-                    )
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable(enabled = source.url != null) {
+                                showAll = false
+                                source.url?.let(::openUrl)
+                            }
+                            .padding(horizontal = 4.dp, vertical = 10.dp)
+                    ) {
+                        SourceFavicon(source, size = 22.dp)
+                        Spacer(Modifier.width(10.dp))
+                        Column {
+                            Text(
+                                source.label,
+                                style = MaterialTheme.typography.bodyMedium,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            if (source.url != null) {
+                                Text(
+                                    source.url.orEmpty(),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        }
+                    }
                 }
-                Spacer(Modifier.width(8.dp))
-                Text(
-                    source.label,
-                    style = MaterialTheme.typography.bodySmall,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.widthIn(max = 420.dp)
-                )
             }
         }
+    }
+}
+
+@Composable
+private fun SourceFavicon(source: MessageSource, size: Dp = 18.dp) {
+    val host = remember(source.url) { source.url?.let(::faviconHostOf) }
+    if (host != null) {
+        coil3.compose.AsyncImage(
+            model = "https://www.google.com/s2/favicons?domain=$host&sz=32",
+            contentDescription = null,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier
+                .size(size)
+                .clip(CircleShape)
+                .background(MaterialTheme.colorScheme.surface)
+        )
+    } else {
+        Icon(
+            FeatherIcons.Globe,
+            contentDescription = null,
+            modifier = Modifier.size(size),
+            tint = MaterialTheme.colorScheme.primary
+        )
     }
 }
 
