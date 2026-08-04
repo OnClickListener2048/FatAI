@@ -558,7 +558,7 @@ class AIChatViewModel(
             }
             localToolSources.forEach { appendLine("- $it") }
         }.trimEnd()
-        return copy(content = content.trimEnd() + "\\n\\n---\\n\\n" + references)
+        return copy(content = content.trimEnd() + "\n\n---\n\n" + references)
     }
 
     private fun completeAssistantResponse(
