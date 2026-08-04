@@ -17,11 +17,9 @@
 | 方法与路径 | 用途 | 请求参数 | 响应与客户端处理 |
 | --- | --- | --- | --- |
 | `POST /v1/auth/device` | 为当前本地设备取得 FatAI 服务访问令牌。首次调用会生成 UUID 并保存到本地设置 `fat_ai_server_device_id`。 | `device_id`：持久设备 UUID；`display_name`：`FatAI <currentUserId>`。 | JSON `{ "access_token": "..." }`。失败会终止后续依赖该令牌的请求。 |
-| `POST /v1/chat/stream` | 主聊天模型调用，采用 SSE 接收回答和工具调用。发送前会等待该 `model_configuration_id` 的上传完成。 | `messages`：`[{ role, content }]`；`model`：可空，优先使用当前配置模型；`model_configuration_id`：可空本地模型配置 ID；`temperature`：浮点采样温度；`tools`：模型可调用工具定义数组。每个工具包含 `name`、`description` 和 `parameters`；每个参数包含 `name`、`description`、`required`、`allowedValues`。 | 接收 `text/event-stream`：`message` 事件含 `{content}`，追加回答；`tool_call` 含 `{id?, name, arguments}`，表示**服务端**正在执行该工具调用，客户端只用于展示进度与来源标注，不执行也不发起第二轮请求；`done` 表示结束并输出本轮收集到的全部工具调用。非 2xx 抛出异常。 |
+| `POST /v1/chat/stream` | 主聊天模型调用，采用 SSE 接收回答和工具调用。发送前会等待该 `model_configuration_id` 的上传完成。 | `messages`：`[{ role, content }]`，仅原始对话轮次（客户端不再预组装上下文）；`model`：可空，优先使用当前配置模型；`model_configuration_id`：可空本地模型配置 ID；`temperature`：浮点采样温度；`workspace_id`/`conversation_id`：可空，用于服务端按 DB 组装模板、工作空间指令与记忆；`response_language_tag`：响应语言标签（默认 `en`）；`tool_results`：可空字符串数组，客户端侧瞬态工具结果（如 Docling 提取内容），服务端追加在历史之后；`tools`：模型可调用工具定义数组。每个工具包含 `name`、`description` 和 `parameters`；每个参数包含 `name`、`description`、`required`、`allowedValues`。 | 接收 `text/event-stream`：`message` 事件含 `{content}`，追加回答；`tool_call` 含 `{id?, name, arguments}`，表示**服务端**正在执行该工具调用，客户端只用于展示进度与来源标注，不执行也不发起第二轮请求；`done` 表示结束并输出本轮收集到的全部工具调用。非 2xx 抛出异常。 |
 
-`/v1/chat/stream` 只发送上述字段。`ProviderConfig.maxTokens`、`topP`、`systemPrompt` 不会传给 FatAI 服务；系统提示词已由上下文组装进 `messages`。
-
-服务端会绑定并执行它支持的 `tools`（当前为 `web_search` 与 `weather`），在单次 SSE 流内完成"模型 → 工具 → 模型"循环后输出最终回答；客户端只渲染 `message` 内容。客户端当前向模型广告的工具只有 `web_search` 与 `weather`；calculator、text_transform、json、current_time、uuid 等本地工具不再暴露给模型。
+`/v1/chat/stream` 只发送上述字段。`ProviderConfig.maxTokens`、`topP`、`systemPrompt` 不会传给 FatAI 服务。上下文组装（系统提示词、启用模板、工作空间指令、记忆召回、历史截断）已迁移到服务端 `assemble_context`，客户端 `ContextEngine` 已移除；服务端同时绑定并执行它支持的 `tools`（当前为 `web_search` 与 `weather`），在单次 SSE 流内完成"模型 → 工具 → 模型"循环后输出最终回答。客户端当前向模型广告的工具只有 `web_search` 与 `weather`；calculator、text_transform、json、current_time、uuid 等本地工具不再暴露给模型。
 
 ### FatAI 服务同步接口
 

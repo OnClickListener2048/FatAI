@@ -10,7 +10,7 @@ val appModule = module {
     println("appModule")
     single {
         println("AIChatViewModel")
-        AIChatViewModel(get(), get(), get(), get(), get(), get(), get(), get(), get(), get(), get())
+        AIChatViewModel(get(), get(), get(), get(), get(), get(), get(), get(), get(), get())
     }
 }
 

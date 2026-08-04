@@ -40,7 +40,8 @@ class FatAiServerModelGateway(
     override suspend fun stream(
         messages: List<ChatMessage>,
         config: ProviderConfig,
-        tools: List<ToolDefinition>
+        tools: List<ToolDefinition>,
+        context: ChatContext
     ): Flow<ChatStreamChunk> = flow {
         serverSync.awaitModelConfiguration(config.configurationId)
         val accessToken = serverSync.accessToken()
@@ -55,6 +56,10 @@ class FatAiServerModelGateway(
                         model = config.model.ifBlank { null },
                         modelConfigurationId = config.configurationId,
                         temperature = config.temperature,
+                        workspaceId = context.workspaceId,
+                        conversationId = context.conversationId,
+                        responseLanguageTag = context.responseLanguageTag,
+                        toolResults = context.toolResults,
                         tools = tools.map { definition ->
                             ServerToolDefinition(
                                 name = definition.name,
@@ -116,6 +121,10 @@ private data class ServerChatStreamRequest(
     val model: String? = null,
     @SerialName("model_configuration_id") val modelConfigurationId: String? = null,
     val temperature: Float,
+    @SerialName("workspace_id") val workspaceId: String? = null,
+    @SerialName("conversation_id") val conversationId: String? = null,
+    @SerialName("response_language_tag") val responseLanguageTag: String? = null,
+    @SerialName("tool_results") val toolResults: List<String> = emptyList(),
     val tools: List<ServerToolDefinition> = emptyList()
 )
 

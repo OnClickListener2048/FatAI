@@ -4,13 +4,6 @@ import ai.fatai.database.Database
 import ai.fatai.network.provideHttpClient
 import ai.fatai.repo.ChatRepository
 import ai.fatai.repo.ApiKeyRepository
-import ai.fatai.core.context.ContextEngine
-import ai.fatai.core.context.FilePromptProvider
-import ai.fatai.core.context.HistoryPromptProvider
-import ai.fatai.core.context.MemoryPromptProvider
-import ai.fatai.core.context.SystemPromptProvider
-import ai.fatai.core.context.TemplatePromptProvider
-import ai.fatai.core.context.WorkspacePromptProvider
 import ai.fatai.feature.files.FileAssetRepository
 import ai.fatai.feature.memory.MemoryRepository
 import ai.fatai.feature.memory.ConversationMemoryService
@@ -85,19 +78,6 @@ val sharedModule = module {
     single<SyncMutationSink> { get<FatAiServerSync>() }
     single { ConversationMemoryService(get(), get()) }
     single { UserMemoryExtractionService(get(), get()) }
-
-    single {
-        ContextEngine(
-            setOf(
-                SystemPromptProvider(),
-                TemplatePromptProvider(get()),
-                WorkspacePromptProvider(),
-                MemoryPromptProvider(get()),
-                FilePromptProvider(get()),
-                HistoryPromptProvider()
-            )
-        )
-    }
 }
 
 expect fun platformModule(): Module
