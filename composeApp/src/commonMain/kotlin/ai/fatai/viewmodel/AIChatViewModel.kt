@@ -124,14 +124,9 @@ class AIChatViewModel(
             messageAttachments = emptyMap(),
             inputText = ""
         )
-        workspaceRepository.getAll().forEach { workspace ->
-            serverSync.syncWorkspace(workspace.id, workspace.name, workspace.systemPrompt)
-        }
         loadActiveConfig()
         selectedConversationId?.let(::selectConversation)
-    }
-
-    fun loadConversations() {
+    }    fun loadConversations() {
         val conversations = chatRepository.getConversations(_state.value.currentWorkspaceId)
         _state.value = _state.value.copy(conversations = conversations)
     }
