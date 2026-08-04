@@ -107,9 +107,16 @@ class ChatRepository(
     }
 
     fun deleteConversation(id: String) {
+        val messageIds = queries.selectAllOrderedByTime(id, currentUser.currentUserId).executeAsList().map { it.id }
         queries.deleteByConversationId(id, currentUser.currentUserId)
         queries.deleteConversation(id, currentUser.currentUserId)
-        serverSync?.deleteConversation(id)
+        serverSync?.let { sink ->
+            // Delete the messages first: outbox coalescing replaces their pending upserts with
+            // the new DELETEs, so other devices never re-insert orphans after the conversation
+            // delete lands.
+            messageIds.forEach(sink::deleteMessage)
+            sink.deleteConversation(id)
+        }
     }
 
     fun updateConversationTimestamp(id: String) {
