@@ -53,13 +53,25 @@ class SyncRemoteStore(
             "message" -> if (change.operation == "DELETE") {
                 queries.deleteRemoteMessage(change.entityId, currentUser.currentUserId)
             } else {
+                val messageType = if (payload.string("role") == "user") ChatItemType.Question else ChatItemType.Answer
+                // Preserve the local parsed markdown AST and source chips: the insert only
+                // fires for new rows, the update refreshes the synced fields.
                 queries.upsertRemoteMessage(
                     id = change.entityId,
                     userId = currentUser.currentUserId,
                     conversationId = payload.string("conversation_id", "default"),
                     content = payload.string("content"),
                     markdownDocument = "",
-                    type = if (payload.string("role") == "user") ChatItemType.Question else ChatItemType.Answer,
+                    type = messageType,
+                    contentType = contentType(payload.string("content_type")),
+                    createdAt = now
+                )
+                queries.updateRemoteMessage(
+                    id = change.entityId,
+                    userId = currentUser.currentUserId,
+                    conversationId = payload.string("conversation_id", "default"),
+                    content = payload.string("content"),
+                    type = messageType,
                     contentType = contentType(payload.string("content_type")),
                     createdAt = now
                 )

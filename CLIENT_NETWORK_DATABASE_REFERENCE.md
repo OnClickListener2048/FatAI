@@ -17,7 +17,7 @@
 | 方法与路径 | 用途 | 请求参数 | 响应与客户端处理 |
 | --- | --- | --- | --- |
 | `POST /v1/auth/device` | 为当前本地设备取得 FatAI 服务访问令牌。首次调用会生成 UUID 并保存到本地设置 `fat_ai_server_device_id`。 | `device_id`：持久设备 UUID；`display_name`：`FatAI <currentUserId>`。 | JSON `{ "access_token": "..." }`。失败会终止后续依赖该令牌的请求。 |
-| `POST /v1/chat/stream` | 主聊天模型调用，采用 SSE 接收回答和工具调用。发送前会等待该 `model_configuration_id` 的上传完成。 | `messages`：`[{ role, content }]`，仅原始对话轮次（客户端不再预组装上下文）；`model`：可空，优先使用当前配置模型；`model_configuration_id`：可空本地模型配置 ID；`temperature`：浮点采样温度；`workspace_id`/`conversation_id`：用于服务端按 DB 组装模板、工作空间指令与记忆，并作为聊天直存的归属；`response_language_tag`：响应语言标签（默认 `en`）；`tool_results`：可空字符串数组，客户端侧瞬态工具结果（如 Docling 提取内容），服务端追加在历史之后；`include_contextual_references`：默认为 `true`，附件分析置 `false`；`user_message_id`/`assistant_message_id`：客户端持有的消息 ID，服务端以此直存本轮对话；`tools`：模型可调用工具定义数组。每个工具包含 `name`、`description` 和 `parameters`；每个参数包含 `name`、`description`、`required`、`allowedValues`。 | 接收 `text/event-stream`：`message` 事件含 `{content}`，追加回答；`tool_call` 含 `{id?, name, arguments}`，表示**服务端**正在执行该工具调用，客户端只用于展示进度与来源标注，不执行也不发起第二轮请求；`done` 表示结束并输出本轮收集到的全部工具调用。非 2xx 抛出异常。 |
+| `POST /v1/chat/stream` | 主聊天模型调用，采用 SSE 接收回答和工具调用。发送前会等待该 `model_configuration_id` 的上传完成。 | `messages`：`[{ role, content }]`，仅原始对话轮次（客户端不再预组装上下文）；`model`：可空，优先使用当前配置模型；`model_configuration_id`：可空本地模型配置 ID；`temperature`：浮点采样温度；`workspace_id`/`conversation_id`：用于服务端按 DB 组装模板、工作空间指令与记忆，并作为聊天直存的归属；`response_language_tag`：响应语言标签（默认 `en`）；`tool_results`：可空字符串数组，客户端侧瞬态工具结果（如 Docling 提取内容），服务端追加在历史之后；`include_contextual_references`：默认为 `true`，附件分析置 `false`；`user_message_id`/`assistant_message_id`：客户端持有的消息 ID，服务端以此直存本轮对话；`tools`：模型可调用工具定义数组。每个工具包含 `name`、`description` 和 `parameters`；每个参数包含 `name`、`description`、`required`、`allowedValues`。 | 接收 `text/event-stream`：`message` 事件含 `{content}`，追加回答；`tool_call` 含 `{id?, name, arguments, sources?}`，`sources` 为服务端执行工具后返回的结构化来源（`[{ title, url }]`，已按 URL 跨轮次去重），客户端用于渲染来源区块；`done` 表示结束并输出本轮收集到的全部工具调用。非 2xx 抛出异常。 |
 
 `/v1/chat/stream` 只发送上述字段。`ProviderConfig.maxTokens`、`topP`、`systemPrompt` 不会传给 FatAI 服务。上下文组装（系统提示词、启用模板、工作空间指令、记忆召回、历史截断）已迁移到服务端 `assemble_context`，客户端 `ContextEngine` 已移除；服务端同时绑定并执行它支持的 `tools`（当前为 `web_search` 与 `weather`），在单次 SSE 流内完成"模型 → 工具 → 模型"循环后输出最终回答。客户端当前向模型广告的工具只有 `web_search` 与 `weather`；calculator、text_transform、json、current_time、uuid 等本地工具不再暴露给模型。
 
@@ -86,7 +86,7 @@
 | 表 | 用途与主要字段 |
 | --- | --- |
 | `UserAccount` | 本地数据归属用户：`id`（PK）、`name`、`createdAt`、`updatedAt`。初始化时确保默认用户存在。 |
-| `ChatItem` | 聊天消息：`id`（PK）、`userId`、`conversationId`、`content`、`markdownDocument`、`type`（`Question`/`Answer`）、`contentType`、`createdAt`。`conversationId` 外键删除时级联删除。 |
+| `ChatItem` | 聊天消息：`id`（PK）、`userId`、`conversationId`、`content`、`markdownDocument`、`sources`（来源 JSON：`[{label, url?}]`，用于消息来源 UI）、`type`（`Question`/`Answer`）、`contentType`、`createdAt`。`conversationId` 外键删除时级联删除。 |
 | `Conversation` | 会话：`id`（PK）、`userId`、`title`、`workspaceId`、`providerType`、`model`、创建/更新时间、`isPinned`、`isArchived`。 |
 | `ApiKey` | 模型配置的非秘密元数据：`id`、`userId`、`providerType`、`name`、`apiKey`、`baseUrl`、`model`、`isActive`、`createdAt`。新代码写入空 `apiKey`，密钥上传至 FatAI 服务。 |
 | `Workspace` | 工作空间：`id`、`userId`、`name`、`systemPrompt`、创建/更新时间、`isArchived`。默认 Inbox ID 为 `inbox`。 |

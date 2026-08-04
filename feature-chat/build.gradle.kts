@@ -1,6 +1,6 @@
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
-plugins { alias(libs.plugins.kotlinMultiplatform); alias(libs.plugins.androidLibrary) }
+plugins { alias(libs.plugins.kotlinMultiplatform); alias(libs.plugins.kotlinSerialization); alias(libs.plugins.androidLibrary) }
 
 kotlin {
     androidTarget { compilerOptions { jvmTarget.set(JvmTarget.JVM_17) } }
@@ -15,6 +15,7 @@ kotlin {
             implementation(project(":feature-workspace"))
             implementation(project(":feature-files"))
             implementation(project(":feature-user"))
+            implementation(libs.ktor.serialization.kotlinx.json)
         }
         commonTest.dependencies {
             implementation(libs.kotlin.test)

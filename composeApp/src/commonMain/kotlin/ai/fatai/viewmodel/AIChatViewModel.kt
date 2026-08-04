@@ -38,6 +38,7 @@ import ai.fatai.feature.user.CurrentUserProvider
 import ai.fatai.repo.ChatItem
 import ai.fatai.repo.ChatRepository
 import ai.fatai.repo.Conversation
+import ai.fatai.repo.MessageSource
 import ai.fatai.repo.ApiKeyRepository
 import ai.fatai.repo.ApiKeyInfo
 import kotlin.uuid.ExperimentalUuidApi
@@ -444,9 +445,8 @@ class AIChatViewModel(
                     val serverToolExecutions = toolCalls.map { call ->
                         ai.fatai.feature.tools.ToolExecution(
                             call = ToolCall(call.name, call.arguments),
-                            // The server executes the tool; the client only records provenance.
-                            result = ToolResult.Success(""),
-                            toolDisplayName = toolRegistry.definitionFor(call.name)?.displayName
+                            // The server executes the tool and returns structured sources.
+                            result = ToolResult.Success("", sources = call.sources)
                         )
                     }
                     val referencedExecutions = documentExecutions + serverToolExecutions
@@ -545,24 +545,12 @@ class AIChatViewModel(
     }
 
     private fun ChatItem.withToolSources(executions: List<ai.fatai.feature.tools.ToolExecution>): ChatItem {
-        val externalSources = executions.flatMap { execution ->
-            (execution.result as? ToolResult.Success)?.sources.orEmpty()
-        }.distinctBy { source -> source.url ?: source.label }
-        val localToolSources = executions
-            .filter { execution -> execution.result is ToolResult.Success }
-            .filter { execution -> (execution.result as ToolResult.Success).sources.isEmpty() }
-            .mapNotNull { execution -> execution.toolDisplayName?.let { "FatAI built-in tool: $it" } }
-
-        if (externalSources.isEmpty() && localToolSources.isEmpty()) return this
-        val references = buildString {
-            appendLine("#### Information sources")
-            externalSources.forEach { source ->
-                val label = source.label.replace("]", "\\]")
-                if (source.url != null) appendLine("- [$label](${source.url})") else appendLine("- $label")
-            }
-            localToolSources.forEach { appendLine("- $it") }
-        }.trimEnd()
-        return copy(content = content.trimEnd() + "\n\n---\n\n" + references)
+        val sources = executions
+            .flatMap { execution -> (execution.result as? ToolResult.Success)?.sources.orEmpty() }
+            .distinctBy { source -> source.url ?: source.label }
+            .map { source -> MessageSource(label = source.label, url = source.url) }
+        if (sources.isEmpty()) return this
+        return copy(sources = sources)
     }
 
     private fun completeAssistantResponse(
@@ -577,7 +565,8 @@ class AIChatViewModel(
             assistantMsg.content,
             ChatItemType.Answer,
             id = assistantMsg.id,
-            sync = false
+            sync = false,
+            sources = assistantMsg.sources
         )
         if (chatRepository.getMessageCount(conversationId) <= 2) {
             messages.firstOrNull { it.type == ChatItemType.Question }?.let { firstMsg ->

@@ -5,6 +5,7 @@ import ai.fatai.chat.ChatStreamChunk
 import ai.fatai.chat.ProviderConfig
 import ai.fatai.feature.tools.ToolDefinition
 import ai.fatai.feature.tools.ProviderToolCall
+import ai.fatai.feature.tools.ToolSource
 import io.ktor.client.HttpClient
 import io.ktor.client.request.preparePost
 import io.ktor.client.request.setBody
@@ -98,7 +99,7 @@ class FatAiServerModelGateway(
                             if (payload.content.isNotEmpty()) emit(ChatStreamChunk(content = payload.content))
                         } else if (eventName == "tool_call") {
                             val payload = json.decodeFromString<ServerToolCall>(line.substringAfter(':').trim())
-                            val call = ProviderToolCall(payload.id, payload.name, payload.arguments)
+                            val call = payload.toProviderToolCall()
                             toolCalls += call
                             // The server executes the tool itself; this chunk only surfaces the
                             // call for progress display and provenance.
@@ -156,5 +157,19 @@ private data class ServerToolParameter(
 private data class ServerToolCall(
     val id: String? = null,
     val name: String,
-    val arguments: Map<String, String> = emptyMap()
+    val arguments: Map<String, String> = emptyMap(),
+    val sources: List<ServerToolSource> = emptyList()
+) {
+    fun toProviderToolCall() = ProviderToolCall(
+        id = id,
+        name = name,
+        arguments = arguments,
+        sources = sources.map { source -> ToolSource(label = source.title, url = source.url) }
+    )
+}
+
+@Serializable
+private data class ServerToolSource(
+    val title: String,
+    val url: String? = null
 )

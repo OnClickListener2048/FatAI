@@ -15,6 +15,7 @@ CREATE TABLE ChatItem (
     conversationId TEXT NOT NULL DEFAULT 'default',
     content TEXT NOT NULL,
     markdownDocument TEXT NOT NULL DEFAULT '',
+    sources TEXT NOT NULL DEFAULT '',
     type TEXT AS ChatItemType NOT NULL CHECK(type IN ('Question', 'Answer')),
     contentType TEXT AS MessageContentType NOT NULL DEFAULT 'Markdown'
         CHECK(contentType IN ('Text', 'Markdown', 'Image', 'File', 'ToolResult', 'Thinking')),
@@ -136,8 +137,8 @@ selectById:
 SELECT * FROM ChatItem WHERE id = :id AND userId = :userId;
 
 insertItem:
-INSERT OR REPLACE INTO ChatItem(id, userId, conversationId, content, markdownDocument, type, contentType, createdAt)
-VALUES (:id, :userId, :conversationId, :content, :markdownDocument, :type, :contentType, :createdAt);
+INSERT OR REPLACE INTO ChatItem(id, userId, conversationId, content, markdownDocument, sources, type, contentType, createdAt)
+VALUES (:id, :userId, :conversationId, :content, :markdownDocument, :sources, :type, :contentType, :createdAt);
 
 updateContentById:
 UPDATE ChatItem SET content = :content WHERE id = :id AND userId = :userId;
@@ -400,10 +401,17 @@ deleteRemoteConversation:
 DELETE FROM Conversation WHERE id = :id AND userId = :userId;
 
 upsertRemoteMessage:
-INSERT OR REPLACE INTO ChatItem(
-    id, userId, conversationId, content, markdownDocument, type, contentType, createdAt
-)
-VALUES (:id, :userId, :conversationId, :content, :markdownDocument, :type, :contentType, :createdAt);
+INSERT OR IGNORE INTO ChatItem(id, userId, conversationId, content, markdownDocument, sources, type, contentType, createdAt)
+VALUES (:id, :userId, :conversationId, :content, :markdownDocument, '', :type, :contentType, :createdAt);
+
+updateRemoteMessage:
+UPDATE ChatItem SET
+    conversationId = :conversationId,
+    content = :content,
+    type = :type,
+    contentType = :contentType,
+    createdAt = :createdAt
+WHERE id = :id AND userId = :userId;
 
 deleteRemoteMessage:
 DELETE FROM ChatItem WHERE id = :id AND userId = :userId;

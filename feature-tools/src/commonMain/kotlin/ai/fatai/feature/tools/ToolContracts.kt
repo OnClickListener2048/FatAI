@@ -52,6 +52,7 @@ sealed interface ToolResult {
 }
 
 /** A user-visible provenance record for information returned by a tool. */
+@Serializable
 data class ToolSource(
     val label: String,
     val url: String? = null
@@ -181,7 +182,9 @@ data class ProviderToolPayload(
 data class ProviderToolCall(
     val id: String? = null,
     val name: String,
-    val arguments: Map<String, String> = emptyMap()
+    val arguments: Map<String, String> = emptyMap(),
+    /** Structured result sources (e.g. search pages) executed by the server. */
+    val sources: List<ToolSource> = emptyList()
 )
 
 class ToolProviderAdapterRegistry(adapters: List<ToolProviderAdapter>) {

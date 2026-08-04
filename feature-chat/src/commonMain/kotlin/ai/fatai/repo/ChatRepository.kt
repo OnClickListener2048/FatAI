@@ -8,6 +8,10 @@ import ai.fatai.chat.markdown.MarkdownDocumentCodec
 import ai.fatai.chat.markdown.MarkdownParser
 import ai.fatai.feature.user.CurrentUserProvider
 import ai.fatai.sync.SyncMutationSink
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.decodeFromString
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 import kotlin.time.Clock
 import kotlin.uuid.Uuid
 import kotlin.uuid.ExperimentalUuidApi
@@ -35,7 +39,14 @@ data class ChatItem(
     val createdAt: Long,
     val markdownDocument: MarkdownDocument? = null,
     val reasoningContent: String = "",
-    val isLoading: Boolean = false
+    val isLoading: Boolean = false,
+    val sources: List<MessageSource> = emptyList()
+)
+
+@Serializable
+data class MessageSource(
+    val label: String,
+    val url: String? = null
 )
 
 class ChatRepository(
@@ -147,7 +158,8 @@ class ChatRepository(
                 type = row.type,
                 contentType = row.contentType,
                 createdAt = row.createdAt,
-                markdownDocument = markdownDocument
+                markdownDocument = markdownDocument,
+                sources = decodeSources(row.sources)
             )
         }
     }
@@ -159,7 +171,8 @@ class ChatRepository(
         type: ChatItemType,
         contentType: MessageContentType = MessageContentType.Markdown,
         id: String = Uuid.random().toString(),
-        sync: Boolean = true
+        sync: Boolean = true,
+        sources: List<MessageSource> = emptyList()
     ): ChatItem {
         val time = now()
         val markdownDocument = content
@@ -171,6 +184,7 @@ class ChatRepository(
             conversationId = conversationId,
             content = content,
             markdownDocument = markdownDocument?.let(MarkdownDocumentCodec::encode).orEmpty(),
+            sources = encodeSources(sources),
             type = type,
             contentType = contentType,
             createdAt = time
@@ -193,8 +207,20 @@ class ChatRepository(
             type = type,
             contentType = contentType,
             createdAt = time,
-            markdownDocument = markdownDocument
+            markdownDocument = markdownDocument,
+            sources = sources
         )
+    }
+
+    private companion object {
+        val sourcesJson = Json { ignoreUnknownKeys = true }
+
+        fun encodeSources(sources: List<MessageSource>): String =
+            if (sources.isEmpty()) "" else sourcesJson.encodeToString(sources)
+
+        fun decodeSources(encoded: String): List<MessageSource> =
+            encoded.takeIf(String::isNotBlank)?.let { runCatching { sourcesJson.decodeFromString<List<MessageSource>>(it) }.getOrNull() }
+                ?: emptyList()
     }
 
     fun updateMessageContent(id: String, content: String) {

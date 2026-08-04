@@ -8,6 +8,7 @@ import ai.fatai.feature.user.UserRepository
 import ai.fatai.feature.workspace.Workspace
 import ai.fatai.repo.ApiKeyRepository
 import ai.fatai.repo.Conversation
+import ai.fatai.repo.MessageSource
 import ai.fatai.viewmodel.AIChatViewModel
 import ai.fatai.viewmodel.AssistantActivity
 import ai.fatai.viewmodel.ChatScrollPosition
@@ -78,12 +79,14 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import compose.icons.FeatherIcons
 import compose.icons.feathericons.ChevronDown
 import compose.icons.feathericons.Copy
 import compose.icons.feathericons.Folder
+import compose.icons.feathericons.Globe
 import compose.icons.feathericons.Menu
 import compose.icons.feathericons.MoreVertical
 import compose.icons.feathericons.Paperclip
@@ -926,6 +929,10 @@ private fun ChatBubble(
                             )
                         }
                     }
+                    if (msg.sources.isNotEmpty()) {
+                        Spacer(Modifier.height(8.dp))
+                        MessageSources(msg.sources)
+                    }
                     if (attachments.isNotEmpty()) {
                         Spacer(Modifier.height(8.dp))
                         MessageAttachments(attachments)
@@ -968,6 +975,57 @@ private fun ChatBubble(
             }
         }
     }
+}
+
+@Composable
+private fun MessageSources(sources: List<MessageSource>) {
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        sources.forEach { source ->
+            val host = remember(source.url) { source.url?.let(::faviconHostOf) }
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f))
+                    .clickable(enabled = source.url != null) { source.url?.let(::openUrl) }
+                    .padding(horizontal = 8.dp, vertical = 5.dp)
+            ) {
+                if (host != null) {
+                    coil3.compose.AsyncImage(
+                        model = "https://www.google.com/s2/favicons?domain=$host&sz=32",
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier
+                            .size(18.dp)
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.surface)
+                    )
+                } else {
+                    Icon(
+                        FeatherIcons.Globe,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp),
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                }
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    source.label,
+                    style = MaterialTheme.typography.bodySmall,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.widthIn(max = 420.dp)
+                )
+            }
+        }
+    }
+}
+
+private fun faviconHostOf(url: String): String? {
+    val afterScheme = url.substringAfter("://", url)
+    val end = afterScheme.indexOfFirst { it == '/' || it == '?' || it == '#' }
+    val hostAndPort = if (end >= 0) afterScheme.substring(0, end) else afterScheme
+    return hostAndPort.substringBefore(':').ifBlank { null }
 }
 
 @Composable
