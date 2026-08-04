@@ -1,6 +1,7 @@
 package ai.fatai.viewmodel
 
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
@@ -455,6 +456,9 @@ class AIChatViewModel(
                     }
                     completeAssistantResponse(conversationId, messages, assistantMsg, config)
                 }
+            } catch (e: CancellationException) {
+                // The user stopped generation; stopGeneration() keeps the partial answer.
+                throw e
             } catch (e: Exception) {
                 assistantMsg = assistantMsg.copy(
                     content = "Error: ${e.message}",
@@ -712,6 +716,8 @@ class AIChatViewModel(
                                 loadConversations()
                             }
                         }
+                    } catch (e: CancellationException) {
+                        throw e
                     } catch (e: Exception) {
                         assistantMsg = assistantMsg.copy(
                             content = "Error: ${e.message}",

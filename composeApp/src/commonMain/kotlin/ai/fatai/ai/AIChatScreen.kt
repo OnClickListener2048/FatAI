@@ -1146,11 +1146,17 @@ private fun ChatInputBar(
                         IconButton(onClick = onAttach, enabled = enabled && !isStreaming) {
                             Icon(FeatherIcons.Paperclip, stringResource(Res.string.attach_file))
                         }
-                        IconButton(
-                            onClick = onSend,
-                            enabled = enabled && (text.isNotBlank() || attachments.isNotEmpty()) && !isStreaming
-                        ) {
-                            Icon(FeatherIcons.Send, stringResource(Res.string.send))
+                        if (isStreaming) {
+                            IconButton(onClick = onStop) {
+                                Icon(FeatherIcons.Square, stringResource(Res.string.stop))
+                            }
+                        } else {
+                            IconButton(
+                                onClick = onSend,
+                                enabled = enabled && (text.isNotBlank() || attachments.isNotEmpty())
+                            ) {
+                                Icon(FeatherIcons.Send, stringResource(Res.string.send))
+                            }
                         }
                     }
                 },
