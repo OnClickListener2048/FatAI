@@ -298,6 +298,7 @@ class AIChatScreen {
                             assistantActivity = state.assistantActivity,
                             scrollPosition = state.chatScrollPosition,
                             onScrollPositionChange = viewModel::updateChatScrollPosition,
+                            onRegenerate = viewModel::regenerate,
                             modifier = Modifier.weight(1f)
                         )
                         HorizontalDivider()
@@ -307,8 +308,6 @@ class AIChatScreen {
                             onSend = { viewModel.sendMessage(analyzeAttachedFilePrompt) },
                             isStreaming = state.isStreaming,
                             onStop = { viewModel.stopGeneration() },
-                            onRegenerate = { viewModel.regenerate() },
-                            onContinue = { viewModel.continueGeneration() },
                             attachments = state.attachments,
                             onAttach = { filePicker.launch() },
                             onRemoveAttachment = { viewModel.removeAttachment(it) },
@@ -750,6 +749,7 @@ private fun ChatMessagesArea(
     assistantActivity: AssistantActivity?,
     scrollPosition: ChatScrollPosition,
     onScrollPositionChange: (String, Int, Int) -> Unit,
+    onRegenerate: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val conversationId = messages.firstOrNull()?.conversationId
@@ -810,7 +810,10 @@ private fun ChatMessagesArea(
                     showThinking = isStreaming && msg.id == messages.lastOrNull()?.id,
                     assistantActivity = assistantActivity,
                     compactLayout = compactLayout,
-                    attachments = messageAttachments[msg.id].orEmpty()
+                    attachments = messageAttachments[msg.id].orEmpty(),
+                    showRegenerate = !isStreaming && msg.type == ChatItemType.Answer &&
+                        msg.id == messages.lastOrNull()?.id,
+                    onRegenerate = onRegenerate
                 )
             }
             item { Spacer(Modifier.height(4.dp)) }
@@ -849,7 +852,9 @@ private fun ChatBubble(
     showThinking: Boolean,
     assistantActivity: AssistantActivity?,
     compactLayout: Boolean,
-    attachments: List<FileAsset>
+    attachments: List<FileAsset>,
+    showRegenerate: Boolean,
+    onRegenerate: () -> Unit
 ) {
     val clipboardManager = LocalClipboardManager.current
     val isQuestion = msg.type == ChatItemType.Question
@@ -953,6 +958,18 @@ private fun ChatBubble(
                                     contentDescription = stringResource(Res.string.copy_message),
                                     modifier = Modifier.size(16.dp)
                                 )
+                            }
+                            if (showRegenerate) {
+                                IconButton(
+                                    onClick = onRegenerate,
+                                    modifier = Modifier.size(32.dp)
+                                ) {
+                                    Icon(
+                                        FeatherIcons.RefreshCw,
+                                        contentDescription = stringResource(Res.string.regenerate),
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                }
                             }
                         }
                     }
@@ -1157,8 +1174,6 @@ private fun ChatInputBar(
     onSend: () -> Unit,
     isStreaming: Boolean,
     onStop: () -> Unit,
-    onRegenerate: () -> Unit,
-    onContinue: () -> Unit,
     attachments: List<FileAsset>,
     onAttach: () -> Unit,
     onRemoveAttachment: (String) -> Unit,
@@ -1204,20 +1219,7 @@ private fun ChatInputBar(
             }
         }
         if (isStreaming) {
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp),
-                horizontalArrangement = Arrangement.Center
-            ) {
-                TextButton(onClick = onStop) {
-                    Icon(
-                        FeatherIcons.Square,
-                        stringResource(Res.string.stop),
-                        modifier = Modifier.size(14.dp)
-                    )
-                    Spacer(Modifier.width(5.dp))
-                    Text(stringResource(Res.string.stop))
-                }
-            }
+            Spacer(Modifier.height(4.dp))
         }
 
         Card(
@@ -1268,25 +1270,6 @@ private fun ChatInputBar(
                 shape = RoundedCornerShape(22.dp),
                 maxLines = 4
             )
-        }
-        if (!isStreaming) {
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
-                TextButton(onClick = onRegenerate) {
-                    Icon(
-                        FeatherIcons.RefreshCw,
-                        stringResource(Res.string.regenerate),
-                        modifier = Modifier.size(15.dp)
-                    )
-                    Spacer(Modifier.width(5.dp))
-                    Text(stringResource(Res.string.regenerate), fontSize = 12.sp)
-                }
-                TextButton(onClick = onContinue) {
-                    Text(
-                        stringResource(Res.string.continue_generation),
-                        fontSize = 12.sp
-                    )
-                }
-            }
         }
     }
 }
