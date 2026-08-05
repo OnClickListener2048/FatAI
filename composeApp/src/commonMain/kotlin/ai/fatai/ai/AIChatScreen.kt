@@ -1255,7 +1255,13 @@ private fun ChatInputBar(
                         }
                         if (isStreaming) {
                             IconButton(onClick = onStop) {
-                                Icon(FeatherIcons.Square, stringResource(Res.string.stop))
+                                Icon(
+                                    FeatherIcons.Square,
+                                    stringResource(Res.string.stop),
+                                    // The text field is disabled while streaming, which would
+                                    // otherwise tint this icon with the disabled color.
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
                             }
                         } else {
                             IconButton(
