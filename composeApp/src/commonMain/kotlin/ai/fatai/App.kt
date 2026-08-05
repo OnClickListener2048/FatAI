@@ -2,6 +2,7 @@ package ai.fatai
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import androidx.compose.ui.ExperimentalComposeUiApi
 import com.arkivanov.decompose.DefaultComponentContext
 import com.arkivanov.decompose.extensions.compose.stack.Children
 import com.arkivanov.essenty.lifecycle.LifecycleRegistry
@@ -15,13 +16,20 @@ import org.jetbrains.compose.ui.tooling.preview.Preview
 
 @Composable
 @Preview
+@OptIn(ExperimentalComposeUiApi::class)
 fun App() {
     val root = remember { DefaultRootComponent(DefaultComponentContext(LifecycleRegistry())) }
     FatAITheme {
         Children(stack = root.childStack) { child ->
             when (child.instance) {
                 RootComponent.Child.Chat -> AIChatScreen().Content(onSettings = root::openSettings)
-                RootComponent.Child.Settings -> AISettingsScreen().Content(onBack = root::closeSettings)
+                RootComponent.Child.Settings -> {
+                    // The back gesture/button pops settings instead of closing the app. The
+                    // Decompose root context has no platform back dispatcher attached, so
+                    // handleBackButton is inert here.
+                    androidx.compose.ui.backhandler.BackHandler { root.closeSettings() }
+                    AISettingsScreen().Content(onBack = root::closeSettings)
+                }
             }
         }
     }
