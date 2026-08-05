@@ -46,6 +46,8 @@ class FatAiServerModelGateway(
     ): Flow<ChatStreamChunk> = flow {
         serverSync.awaitModelConfiguration(config.configurationId)
         val accessToken = serverSync.accessToken()
+        val streamStartedAt = System.currentTimeMillis()
+        var firstChunkAt: Long? = null
         client.preparePost("${serverUrl.trimEnd('/')}/v1/chat/stream") {
             contentType(ContentType.Application.Json)
             header(HttpHeaders.Accept, ContentType.Text.EventStream.toString())
@@ -94,6 +96,8 @@ class FatAiServerModelGateway(
                 when {
                     line.startsWith("event:") -> eventName = line.substringAfter(':').trim()
                     line.startsWith("data:") -> {
+                        val now = System.currentTimeMillis()
+                        if (firstChunkAt == null && eventName != null) firstChunkAt = now
                         if (eventName == "message") {
                             val payload = json.decodeFromString<ServerStreamEvent>(line.substringAfter(':').trim())
                             if (payload.content.isNotEmpty()) emit(ChatStreamChunk(content = payload.content))
@@ -105,6 +109,10 @@ class FatAiServerModelGateway(
                             // call for progress display and provenance.
                             emit(ChatStreamChunk(content = "", toolCalls = listOf(call)))
                         } else if (eventName == "done") {
+                            println(
+                                "PERF => first_event=${firstChunkAt?.minus(streamStartedAt) ?: -1}ms " +
+                                    "total=${now - streamStartedAt}ms tool_calls=${toolCalls.size}"
+                            )
                             emit(ChatStreamChunk(content = "", isDone = true, toolCalls = toolCalls.toList()))
                         }
                     }
