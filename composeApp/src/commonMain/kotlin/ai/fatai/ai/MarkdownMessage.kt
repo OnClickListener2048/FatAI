@@ -53,12 +53,14 @@ internal fun MarkdownMessage(
     markdown: String,
     document: MarkdownDocument?,
     compactLayout: Boolean,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    textColor: androidx.compose.ui.graphics.Color = MaterialTheme.colorScheme.onSurface
 ) {
     val parsedDocument = remember(markdown, document) { document ?: MarkdownParser.parse(markdown) }
     val bodyStyle = MaterialTheme.typography.bodyMedium.copy(
         fontSize = if (compactLayout) 14.sp else 15.sp,
-        lineHeight = if (compactLayout) 20.sp else 22.sp
+        lineHeight = if (compactLayout) 20.sp else 22.sp,
+        color = textColor
     )
 
     Column(modifier = modifier.fillMaxWidth()) {

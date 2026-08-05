@@ -7,34 +7,80 @@ import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import ai.fatai.feature.settings.SettingsRepository
 import ai.fatai.feature.settings.ThemeMode
 import org.koin.compose.koinInject
 
+// OpenWebUI palette (Tailwind gray scale, neutral; blue-600 accent).
+private val Gray50 = Color(0xFFF8F8F8)
+private val Gray100 = Color(0xFFEBEBEB)
+private val Gray200 = Color(0xFFE4E4E4)
+private val Gray300 = Color(0xFFCECECE)
+private val Gray400 = Color(0xFFB4B4B4)
+private val Gray500 = Color(0xFF9B9B9B)
+private val Gray600 = Color(0xFF666666)
+private val Gray700 = Color(0xFF4D4D4D)
+private val Gray800 = Color(0xFF333333)
+private val Gray850 = Color(0xFF262626)
+private val Gray900 = Color(0xFF161616)
+private val Gray950 = Color(0xFF0D0D0D)
+private val Blue600 = Color(0xFF2563EB)
+
 private val LightColors = lightColorScheme(
-    primary = androidx.compose.ui.graphics.Color(0xFF18181B),
-    onPrimary = androidx.compose.ui.graphics.Color.White,
-    primaryContainer = androidx.compose.ui.graphics.Color(0xFFE5E5E7),
-    onPrimaryContainer = androidx.compose.ui.graphics.Color(0xFF18181B),
-    secondary = androidx.compose.ui.graphics.Color(0xFF52525B),
-    surface = androidx.compose.ui.graphics.Color(0xFFFFFFFF),
-    surfaceVariant = androidx.compose.ui.graphics.Color(0xFFF4F4F5),
-    background = androidx.compose.ui.graphics.Color(0xFFFAFAFA),
-    outline = androidx.compose.ui.graphics.Color(0xFFE4E4E7)
+    primary = Blue600,
+    onPrimary = Color.White,
+    primaryContainer = Gray100,
+    onPrimaryContainer = Gray900,
+    secondary = Gray500,
+    onSecondary = Color.White,
+    secondaryContainer = Gray200,
+    onSecondaryContainer = Gray900,
+    tertiary = Blue600,
+    surface = Color.White,
+    onSurface = Gray900,
+    surfaceVariant = Gray50,
+    onSurfaceVariant = Gray600,
+    background = Color.White,
+    onBackground = Gray900,
+    outline = Gray200,
+    outlineVariant = Gray200,
+    error = Color(0xFFDC2626)
 )
 
 private val DarkColors = darkColorScheme(
-    primary = androidx.compose.ui.graphics.Color(0xFFF4F4F5),
-    onPrimary = androidx.compose.ui.graphics.Color(0xFF18181B),
-    primaryContainer = androidx.compose.ui.graphics.Color(0xFF27272A),
-    onPrimaryContainer = androidx.compose.ui.graphics.Color(0xFFF4F4F5),
-    secondary = androidx.compose.ui.graphics.Color(0xFFA1A1AA),
-    surface = androidx.compose.ui.graphics.Color(0xFF18181B),
-    surfaceVariant = androidx.compose.ui.graphics.Color(0xFF27272A),
-    background = androidx.compose.ui.graphics.Color(0xFF09090B),
-    outline = androidx.compose.ui.graphics.Color(0xFF3F3F46)
+    primary = Blue600,
+    onPrimary = Color.White,
+    primaryContainer = Gray800,
+    onPrimaryContainer = Gray100,
+    secondary = Gray500,
+    onSecondary = Gray950,
+    secondaryContainer = Gray700,
+    onSecondaryContainer = Gray100,
+    tertiary = Blue600,
+    surface = Gray900,
+    onSurface = Gray100,
+    surfaceVariant = Gray850,
+    onSurfaceVariant = Gray400,
+    background = Gray900,
+    onBackground = Gray100,
+    outline = Gray700,
+    outlineVariant = Gray700,
+    error = Color(0xFFF87171)
 )
+
+/** OpenWebUI switch track/thumb colors, keyed by on/off and dark/light. */
+object OpenWebUISwitchColors {
+    val trackOnLight = Gray900
+    val trackOnDark = Color.White
+    val trackOffLight = Gray300
+    val trackOffDark = Gray700
+    val thumbOnLight = Color.White
+    val thumbOnDark = Gray900
+    val thumbOffLight = Color.White
+    val thumbOffDark = Gray500
+}
 
 @Composable
 fun FatAITheme(content: @Composable () -> Unit) {

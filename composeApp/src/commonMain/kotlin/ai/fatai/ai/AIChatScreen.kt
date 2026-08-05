@@ -5,6 +5,7 @@ import ai.fatai.bean.MessageContentType
 import ai.fatai.feature.files.FileAsset
 import ai.fatai.feature.user.User
 import ai.fatai.feature.user.UserRepository
+import ai.fatai.theme.OpenWebUISwitch
 import ai.fatai.feature.workspace.Workspace
 import ai.fatai.repo.ApiKeyRepository
 import ai.fatai.repo.Conversation
@@ -60,7 +61,6 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -79,7 +79,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalClipboardManager
@@ -291,10 +290,10 @@ class AIChatScreen {
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                                         modifier = Modifier.padding(start = 6.dp)
                                     )
-                                    Switch(
+                                    OpenWebUISwitch(
                                         checked = state.activeConfig!!.thinkingEnabled,
                                         onCheckedChange = { viewModel.setThinkingEnabled(it) },
-                                        modifier = Modifier.scale(0.8f)
+                                        modifier = Modifier.padding(start = 6.dp)
                                     )
                                 }
                             }
@@ -928,14 +927,14 @@ private fun ChatBubble(
                 modifier = Modifier.widthIn(max = if (isQuestion) 520.dp else 720.dp),
                 colors = CardDefaults.cardColors(
                     containerColor = if (isQuestion)
-                        MaterialTheme.colorScheme.primaryContainer
+                        MaterialTheme.colorScheme.primary
                     else
                         MaterialTheme.colorScheme.surface
                 ),
                 shape = RoundedCornerShape(
-                    topStart = 14.dp, topEnd = 14.dp,
-                    bottomStart = if (isQuestion) 14.dp else 6.dp,
-                    bottomEnd = if (isQuestion) 6.dp else 14.dp
+                    topStart = if (isQuestion) 18.dp else 14.dp, topEnd = if (isQuestion) 18.dp else 14.dp,
+                    bottomStart = if (isQuestion) 6.dp else 14.dp,
+                    bottomEnd = if (isQuestion) 18.dp else 6.dp
                 )
             ) {
                 Column(
@@ -950,7 +949,11 @@ private fun ChatBubble(
                                 MarkdownMessage(
                                     markdown = msg.content,
                                     document = msg.markdownDocument,
-                                    compactLayout = compactLayout
+                                    compactLayout = compactLayout,
+                                    textColor = if (isQuestion)
+                                        MaterialTheme.colorScheme.onPrimary
+                                    else
+                                        MaterialTheme.colorScheme.onSurface
                                 )
                             } else if (msg.reasoningContent.isNotBlank()) {
                                 SelectionContainer {
@@ -971,7 +974,11 @@ private fun ChatBubble(
                                 msg.content,
                                 style = MaterialTheme.typography.bodyMedium.copy(
                                     fontSize = textSize,
-                                    lineHeight = lineHeight
+                                    lineHeight = lineHeight,
+                                    color = if (isQuestion)
+                                        MaterialTheme.colorScheme.onPrimary
+                                    else
+                                        MaterialTheme.colorScheme.onSurface
                                 )
                             )
                         }
@@ -1304,11 +1311,25 @@ private fun ChatInputBar(
                                 )
                             }
                         } else {
-                            IconButton(
-                                onClick = onSend,
-                                enabled = enabled && (text.isNotBlank() || attachments.isNotEmpty())
+                            val canSend = enabled && (text.isNotBlank() || attachments.isNotEmpty())
+                            Box(
+                                modifier = Modifier
+                                    .padding(start = 4.dp, end = 4.dp)
+                                    .size(34.dp)
+                                    .clip(CircleShape)
+                                    .background(
+                                        if (canSend) MaterialTheme.colorScheme.primary
+                                        else MaterialTheme.colorScheme.primary.copy(alpha = 0.35f)
+                                    )
+                                    .clickable(enabled = canSend, onClick = onSend),
+                                contentAlignment = Alignment.Center
                             ) {
-                                Icon(FeatherIcons.Send, stringResource(Res.string.send))
+                                Icon(
+                                    FeatherIcons.Send,
+                                    stringResource(Res.string.send),
+                                    tint = MaterialTheme.colorScheme.onPrimary,
+                                    modifier = Modifier.size(16.dp)
+                                )
                             }
                         }
                     }
