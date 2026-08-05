@@ -14,8 +14,10 @@ import ai.fatai.viewmodel.AssistantActivity
 import ai.fatai.viewmodel.ChatScrollPosition
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -78,6 +80,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -236,6 +240,8 @@ class AIChatScreen {
 
         @Composable
         fun ChatWorkspace(showDrawerToggle: Boolean) {
+            val focusManager = LocalFocusManager.current
+            val keyboardController = LocalSoftwareKeyboardController.current
             Scaffold(
                 snackbarHost = { SnackbarHost(snackbarHostState) },
                 topBar = {
@@ -284,6 +290,14 @@ class AIChatScreen {
                     modifier = Modifier
                         .fillMaxSize()
                         .padding(padding)
+                        .pointerInput(Unit) {
+                            // Tapping anywhere outside the text field dismisses the soft
+                            // keyboard; interactive children consume their own taps.
+                            detectTapGestures(onTap = {
+                                focusManager.clearFocus(force = true)
+                                keyboardController?.hide()
+                            })
+                        }
                 ) {
                     if (state.currentConversationId == null) {
                         WelcomeScreen(
