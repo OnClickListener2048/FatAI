@@ -631,15 +631,16 @@ class AIChatViewModel(
         val lastAssistant = msgs.lastOrNull { it.type == ChatItemType.Answer }
         val lastQuestion = msgs.lastOrNull { it.type == ChatItemType.Question } ?: return
 
-        // Keep the old answer visible and persisted until the replacement succeeds; a failed
-        // stream must never leave the conversation without an answer.
+        // Remove the old answer from the UI immediately. The persisted copy is kept until
+        // the replacement succeeds, so a failed stream never loses the answer for good.
+        val filteredMsgs = msgs.filter { it.id != lastAssistant?.id }
         _state.value = _state.value.copy(
-            messages = msgs,
+            messages = filteredMsgs,
             isLoading = false
         )
         streamChat(
             convId,
-            msgs,
+            filteredMsgs,
             _state.value.messageAttachments[lastQuestion.id].orEmpty(),
             replaceMessageId = lastAssistant?.id
         )
