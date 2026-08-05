@@ -362,7 +362,8 @@ class AIChatViewModel(
     private fun streamChat(
         conversationId: String,
         messages: List<ChatItem>,
-        attachments: List<FileAsset> = emptyList()
+        attachments: List<FileAsset> = emptyList(),
+        replaceMessageId: String? = null
     ) {
         val config = _state.value.activeConfig ?: return
         @OptIn(ExperimentalUuidApi::class, kotlin.time.ExperimentalTime::class)
@@ -464,6 +465,10 @@ class AIChatViewModel(
                         updateMessageInState(assistantMsg)
                     }
                     completeAssistantResponse(conversationId, messages, assistantMsg, config)
+                    // The replacement succeeded; the regenerated-away answer can now go.
+                    replaceMessageId?.let { oldMessageId ->
+                        if (oldMessageId != assistantMsg.id) chatRepository.deleteMessage(oldMessageId)
+                    }
                 }
             } catch (e: CancellationException) {
                 // The user stopped generation; stopGeneration() keeps the partial answer.
@@ -626,16 +631,18 @@ class AIChatViewModel(
         val lastAssistant = msgs.lastOrNull { it.type == ChatItemType.Answer }
         val lastQuestion = msgs.lastOrNull { it.type == ChatItemType.Question } ?: return
 
-        if (lastAssistant != null) {
-            chatRepository.deleteMessage(lastAssistant.id)
-        }
-
-        val filteredMsgs = msgs.filter { it.id != lastAssistant?.id }
+        // Keep the old answer visible and persisted until the replacement succeeds; a failed
+        // stream must never leave the conversation without an answer.
         _state.value = _state.value.copy(
-            messages = filteredMsgs,
+            messages = msgs,
             isLoading = false
         )
-        streamChat(convId, filteredMsgs, _state.value.messageAttachments[lastQuestion.id].orEmpty())
+        streamChat(
+            convId,
+            msgs,
+            _state.value.messageAttachments[lastQuestion.id].orEmpty(),
+            replaceMessageId = lastAssistant?.id
+        )
     }
 
     fun continueGeneration() {
