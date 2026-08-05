@@ -45,6 +45,7 @@ CREATE TABLE ApiKey (
     baseUrl TEXT NOT NULL DEFAULT '',
     model TEXT NOT NULL DEFAULT '',
     isActive INTEGER NOT NULL DEFAULT 0,
+    thinkingEnabled INTEGER NOT NULL DEFAULT 0,
     createdAt INTEGER NOT NULL
 );
 
@@ -204,11 +205,14 @@ selectActiveApiKey:
 SELECT * FROM ApiKey WHERE userId = :userId AND isActive = 1 LIMIT 1;
 
 insertApiKey:
-INSERT INTO ApiKey(id, userId, providerType, name, apiKey, baseUrl, model, isActive, createdAt)
-VALUES (:id, :userId, :providerType, :name, :apiKey, :baseUrl, :model, :isActive, :createdAt);
+INSERT INTO ApiKey(id, userId, providerType, name, apiKey, baseUrl, model, isActive, thinkingEnabled, createdAt)
+VALUES (:id, :userId, :providerType, :name, :apiKey, :baseUrl, :model, :isActive, :thinkingEnabled, :createdAt);
 
 updateApiKeyActive:
 UPDATE ApiKey SET isActive = :isActive WHERE id = :id AND userId = :userId;
+
+updateApiKeyThinkingEnabled:
+UPDATE ApiKey SET thinkingEnabled = :thinkingEnabled WHERE id = :id AND userId = :userId;
 
 deactivateAllApiKeys:
 UPDATE ApiKey SET isActive = 0 WHERE userId = :userId;
@@ -436,14 +440,14 @@ DELETE FROM PromptTemplate WHERE id = :id AND userId = :userId;
 
 upsertRemoteApiKey:
 INSERT OR REPLACE INTO ApiKey(
-    id, userId, providerType, name, apiKey, baseUrl, model, isActive, createdAt
+    id, userId, providerType, name, apiKey, baseUrl, model, isActive, thinkingEnabled, createdAt
 )
-VALUES (:id, :userId, :providerType, :name, '', :baseUrl, :model, :isActive, :createdAt);
+VALUES (:id, :userId, :providerType, :name, '', :baseUrl, :model, :isActive, :thinkingEnabled, :createdAt);
 
 deleteRemoteApiKey:
 DELETE FROM ApiKey WHERE id = :id AND userId = :userId;
 
 updateRemoteApiKeyMetadata:
 UPDATE ApiKey SET providerType = :providerType, name = :name, baseUrl = :baseUrl,
-    model = :model, isActive = :isActive
+    model = :model, isActive = :isActive, thinkingEnabled = :thinkingEnabled
 WHERE id = :id AND userId = :userId;

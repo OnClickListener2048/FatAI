@@ -44,10 +44,15 @@ class FatAiServerModelGateway(
         tools: List<ToolDefinition>,
         context: ChatContext
     ): Flow<ChatStreamChunk> = flow {
+        val preStart = System.currentTimeMillis()
         serverSync.awaitModelConfiguration(config.configurationId)
+        val configWait = System.currentTimeMillis() - preStart
+        val tokenStart = System.currentTimeMillis()
         val accessToken = serverSync.accessToken()
+        val tokenWait = System.currentTimeMillis() - tokenStart
         val streamStartedAt = System.currentTimeMillis()
         var firstChunkAt: Long? = null
+        println("PERF => pre(config_wait=${configWait}ms token_wait=${tokenWait}ms)")
         client.preparePost("${serverUrl.trimEnd('/')}/v1/chat/stream") {
             contentType(ContentType.Application.Json)
             header(HttpHeaders.Accept, ContentType.Text.EventStream.toString())
@@ -59,6 +64,7 @@ class FatAiServerModelGateway(
                         model = config.model.ifBlank { null },
                         modelConfigurationId = config.configurationId,
                         temperature = config.temperature,
+                        thinking = config.thinkingEnabled,
                         workspaceId = context.workspaceId,
                         conversationId = context.conversationId,
                         responseLanguageTag = context.responseLanguageTag,
@@ -100,6 +106,9 @@ class FatAiServerModelGateway(
                         if (firstChunkAt == null && eventName != null) firstChunkAt = now
                         if (eventName == "message") {
                             val payload = json.decodeFromString<ServerStreamEvent>(line.substringAfter(':').trim())
+                            if (payload.reasoningContent.isNotEmpty()) {
+                                emit(ChatStreamChunk(content = "", reasoningContent = payload.reasoningContent))
+                            }
                             if (payload.content.isNotEmpty()) emit(ChatStreamChunk(content = payload.content))
                         } else if (eventName == "tool_call") {
                             val payload = json.decodeFromString<ServerToolCall>(line.substringAfter(':').trim())
@@ -133,6 +142,7 @@ private data class ServerChatStreamRequest(
     val model: String? = null,
     @SerialName("model_configuration_id") val modelConfigurationId: String? = null,
     val temperature: Float,
+    val thinking: Boolean = false,
     @SerialName("workspace_id") val workspaceId: String? = null,
     @SerialName("conversation_id") val conversationId: String? = null,
     @SerialName("response_language_tag") val responseLanguageTag: String? = null,
@@ -144,7 +154,10 @@ private data class ServerChatStreamRequest(
 )
 
 @Serializable
-private data class ServerStreamEvent(val content: String = "")
+private data class ServerStreamEvent(
+    val content: String = "",
+    @SerialName("reasoning_content") val reasoningContent: String = ""
+)
 
 @Serializable
 private data class ServerToolDefinition(

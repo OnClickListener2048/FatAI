@@ -35,5 +35,6 @@ data class ProviderConfig(
     val maxTokens: Int = 4096,
     val temperature: Float = 0.7f,
     val topP: Float = 1.0f,
-    val systemPrompt: String? = null
+    val systemPrompt: String? = null,
+    val thinkingEnabled: Boolean = false
 )

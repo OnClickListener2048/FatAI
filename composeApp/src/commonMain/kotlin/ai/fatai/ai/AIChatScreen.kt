@@ -60,6 +60,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -78,6 +79,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalClipboardManager
@@ -135,6 +137,7 @@ import fatai.composeapp.generated.resources.settings
 import fatai.composeapp.generated.resources.stop
 import fatai.composeapp.generated.resources.switch_workspace
 import fatai.composeapp.generated.resources.thinking
+import fatai.composeapp.generated.resources.thinking_mode
 import fatai.composeapp.generated.resources.unpin
 import fatai.composeapp.generated.resources.user_account
 import fatai.composeapp.generated.resources.using_tool
@@ -276,6 +279,24 @@ class AIChatScreen {
                                     fontSize = 12.sp,
                                     modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp)
                                 )
+                            }
+                            if (state.activeProvider.supportsThinkingMode && state.activeConfig != null) {
+                                Row(
+                                    verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                                    modifier = Modifier.clickable { viewModel.setThinkingEnabled(!state.activeConfig!!.thinkingEnabled) }
+                                ) {
+                                    Text(
+                                        stringResource(Res.string.thinking_mode),
+                                        fontSize = 12.sp,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.padding(start = 6.dp)
+                                    )
+                                    Switch(
+                                        checked = state.activeConfig!!.thinkingEnabled,
+                                        onCheckedChange = { viewModel.setThinkingEnabled(it) },
+                                        modifier = Modifier.scale(0.8f)
+                                    )
+                                }
                             }
                             IconButton(onClick = { viewModel.newConversation() }) {
                                 Icon(

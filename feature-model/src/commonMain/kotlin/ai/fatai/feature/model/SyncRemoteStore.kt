@@ -124,6 +124,7 @@ class SyncRemoteStore(
                         baseUrl = baseUrl,
                         model = model,
                         isActive = isActive,
+                        thinkingEnabled = 0,
                         createdAt = now
                     )
                 } else {
@@ -133,6 +134,7 @@ class SyncRemoteStore(
                         baseUrl = baseUrl,
                         model = model,
                         isActive = isActive,
+                        thinkingEnabled = 0,
                         id = change.entityId,
                         userId = currentUser.currentUserId
                     )

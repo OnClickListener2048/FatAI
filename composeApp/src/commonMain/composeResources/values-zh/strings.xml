@@ -27,6 +27,8 @@
     <string name="continue_generation">继续生成</string>
     <string name="copy_message">复制消息</string>
     <string name="thinking">正在思考…</string>
+    <string name="thinking_mode">思考模式</string>
+    <string name="thinking_mode_hint">显示模型的思考过程</string>
     <string name="searching">正在搜索…</string>
     <string name="checking_weather">正在查询天气…</string>
     <string name="using_tool">正在调用工具…</string>

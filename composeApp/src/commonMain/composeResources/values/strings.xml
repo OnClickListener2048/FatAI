@@ -27,6 +27,8 @@
     <string name="continue_generation">Continue</string>
     <string name="copy_message">Copy message</string>
     <string name="thinking">Thinking…</string>
+    <string name="thinking_mode">Thinking mode</string>
+    <string name="thinking_mode_hint">Show the model's thinking process while it works</string>
     <string name="searching">Searching…</string>
     <string name="checking_weather">Checking weather…</string>
     <string name="using_tool">Using tool…</string>

@@ -17,6 +17,7 @@ data class ApiKeyInfo(
     val baseUrl: String,
     val model: String,
     val isActive: Boolean,
+    val thinkingEnabled: Boolean = false,
     val createdAt: Long
 )
 
@@ -48,7 +49,8 @@ class ApiKeyRepository(
         apiKey: String,
         baseUrl: String = providerType.defaultBaseUrl,
         model: String = providerType.defaultModel,
-        setActive: Boolean = true
+        setActive: Boolean = true,
+        thinkingEnabled: Boolean = false
     ): ApiKeyInfo {
         val id = Uuid.random().toString()
         val time = now()
@@ -68,12 +70,24 @@ class ApiKeyRepository(
             baseUrl = resolvedBaseUrl,
             model = resolvedModel,
             isActive = if (setActive) 1L else 0L,
+            thinkingEnabled = if (thinkingEnabled) 1L else 0L,
             createdAt = time
         )
 
-        return ApiKeyInfo(id, currentUser.currentUserId, providerType, name, "", resolvedBaseUrl, resolvedModel, setActive, time).also {
+        return ApiKeyInfo(
+            id, currentUser.currentUserId, providerType, name, "", resolvedBaseUrl,
+            resolvedModel, setActive, thinkingEnabled, time
+        ).also {
             serverSync.syncModelConfiguration(it.toProviderConfig(apiKey), isActive = setActive)
         }
+    }
+
+    fun setThinkingEnabled(id: String, enabled: Boolean) {
+        queries.updateApiKeyThinkingEnabled(
+            id = id,
+            userId = currentUser.currentUserId,
+            thinkingEnabled = if (enabled) 1L else 0L
+        )
     }
 
     fun setActiveKey(id: String) {
@@ -100,6 +114,7 @@ class ApiKeyRepository(
                     baseUrl = key.baseUrl.ifBlank { key.providerType.defaultBaseUrl },
                     model = normalizeModel(key.providerType, key.model),
                     isActive = if (key.isActive) 1L else 0L,
+                    thinkingEnabled = if (key.thinkingEnabled) 1L else 0L,
                     createdAt = key.createdAt
                 )
                 if (key.apiKey.isNotBlank()) {
@@ -128,6 +143,7 @@ private fun ai.fatai.database.sqldelight.ApiKey.toApiKeyInfo() = ApiKeyInfo(
     baseUrl = baseUrl,
     model = normalizeModel(providerType, model),
     isActive = isActive != 0L,
+    thinkingEnabled = thinkingEnabled != 0L,
     createdAt = createdAt
 )
 
@@ -137,7 +153,8 @@ private fun ApiKeyInfo.toProviderConfig(apiKey: String) = ai.fatai.chat.Provider
     model = model,
     configurationId = id,
     configurationName = name,
-    providerType = providerType
+    providerType = providerType,
+    thinkingEnabled = thinkingEnabled
 )
 
 private fun normalizeModel(providerType: ProviderType, model: String): String = when {

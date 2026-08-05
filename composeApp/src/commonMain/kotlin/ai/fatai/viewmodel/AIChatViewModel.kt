@@ -194,9 +194,18 @@ class AIChatViewModel(
                     model = key.model.ifBlank { key.providerType.defaultModel },
                     configurationId = key.id,
                     configurationName = key.name,
-                    providerType = key.providerType
+                    providerType = key.providerType,
+                    thinkingEnabled = key.thinkingEnabled
                 )
             }
+        )
+    }
+
+    fun setThinkingEnabled(enabled: Boolean) {
+        val config = _state.value.activeConfig ?: return
+        config.configurationId?.let { id -> apiKeyRepository.setThinkingEnabled(id, enabled) }
+        _state.value = _state.value.copy(
+            activeConfig = config.copy(thinkingEnabled = enabled)
         )
     }
 
@@ -214,7 +223,8 @@ class AIChatViewModel(
                 model = keyInfo.model.ifBlank { keyInfo.providerType.defaultModel },
                 configurationId = keyInfo.id,
                 configurationName = keyInfo.name,
-                providerType = keyInfo.providerType
+                providerType = keyInfo.providerType,
+                thinkingEnabled = keyInfo.thinkingEnabled
             )
         )
     }

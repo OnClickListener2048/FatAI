@@ -21,7 +21,7 @@ class WebSearchTool(
     override val definition = ToolDefinition(
         name = "web_search",
         displayName = "Web search",
-        description = "Searches the web ONLY for current, time-sensitive or location-specific information you cannot know reliably (prices, news, events, recent facts, weather). Never search for general knowledge, movie plots, definitions, opinions or anything you can answer from your own knowledge. Make at most one search, only when truly necessary.",
+        description = "Searches the public web for current information. Use the weather tool, not this tool, for current weather or forecasts.",
         parameters = listOf(
             ToolParameter("query", "Focused web search query.", true),
             ToolParameter("max_results", "Number of results from 1 to 10; defaults to 5.")

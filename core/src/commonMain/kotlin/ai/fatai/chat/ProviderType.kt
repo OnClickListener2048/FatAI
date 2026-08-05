@@ -14,4 +14,8 @@ enum class ProviderType(val displayName: String, val defaultBaseUrl: String, val
 
     val isOpenAICompatible: Boolean
         get() = this == OpenAI || this == DeepSeek || this == OpenRouter || this == Ollama || this == Custom
+
+    /** Providers whose OpenAI-compatible endpoint honors the `thinking` parameter. */
+    val supportsThinkingMode: Boolean
+        get() = this == DeepSeek
 }
