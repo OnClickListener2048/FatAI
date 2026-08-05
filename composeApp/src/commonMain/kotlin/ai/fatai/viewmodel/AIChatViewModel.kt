@@ -334,18 +334,14 @@ class AIChatViewModel(
             )
         }
 
+        // The server persists this turn during the chat stream; local insert only.
+        // If the stream fails, the catch block enqueues the question as a fallback.
         val userMsg = chatRepository.insertMessage(
             conversationId = conversationId,
             content = text.ifBlank { analyzeAttachedFilePrompt },
             type = ChatItemType.Question,
-            contentType = MessageContentType.Text
-        )
-        serverSync.syncMessage(
-            id = userMsg.id,
-            conversationId = userMsg.conversationId,
-            role = "user",
-            content = userMsg.content,
-            contentType = userMsg.contentType.name
+            contentType = MessageContentType.Text,
+            sync = false
         )
         screenModelScope.launch {
             userMemoryExtractionService.rememberFromUserInput(userMsg.content, config)
