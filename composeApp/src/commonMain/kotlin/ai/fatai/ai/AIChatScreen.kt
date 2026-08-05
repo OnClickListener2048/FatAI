@@ -75,6 +75,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
@@ -156,7 +157,7 @@ import io.github.vinceglb.filekit.coil.AsyncImage as FileKitAsyncImage
 
 class AIChatScreen {
 
-    @OptIn(ExperimentalMaterial3Api::class)
+    @OptIn(ExperimentalMaterial3Api::class, ExperimentalComposeUiApi::class)
     @Composable
     fun Content(onSettings: () -> Unit) {
         val viewModel = koinInject<AIChatViewModel>()
@@ -172,6 +173,10 @@ class AIChatScreen {
         }
         val drawerState = rememberDrawerState(DrawerValue.Closed)
         val scope = rememberCoroutineScope()
+        // The system back gesture/button closes the open drawer before reaching the app exit.
+        androidx.compose.ui.backhandler.BackHandler(enabled = drawerState.isOpen) {
+            scope.launch { drawerState.close() }
+        }
         val snackbarHostState = remember { SnackbarHostState() }
         val attachFileTitle = stringResource(Res.string.attach_file)
         val analyzeAttachedFilePrompt = stringResource(Res.string.analyze_attached_file)

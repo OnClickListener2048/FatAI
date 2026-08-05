@@ -5,6 +5,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.ExperimentalComposeUiApi
 import com.arkivanov.decompose.DefaultComponentContext
 import com.arkivanov.decompose.extensions.compose.stack.Children
+import com.arkivanov.decompose.extensions.compose.stack.animation.fade
+import com.arkivanov.decompose.extensions.compose.stack.animation.stackAnimation
 import com.arkivanov.essenty.lifecycle.LifecycleRegistry
 import ai.fatai.ai.AIChatScreen
 import ai.fatai.ai.AISettingsScreen
@@ -20,7 +22,10 @@ import org.jetbrains.compose.ui.tooling.preview.Preview
 fun App() {
     val root = remember { DefaultRootComponent(DefaultComponentContext(LifecycleRegistry())) }
     FatAITheme {
-        Children(stack = root.childStack) { child ->
+        Children(
+            stack = root.childStack,
+            animation = stackAnimation(fade())
+        ) { child ->
             when (child.instance) {
                 RootComponent.Child.Chat -> AIChatScreen().Content(onSettings = root::openSettings)
                 RootComponent.Child.Settings -> {
