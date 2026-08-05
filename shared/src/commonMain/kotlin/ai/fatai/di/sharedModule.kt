@@ -84,6 +84,7 @@ expect fun platformModule(): Module
 
 fun initKoin2(appDeclaration: KoinAppDeclaration = {}) {
     println("initKoin")
+    if (org.koin.core.context.GlobalContext.getOrNull() != null) return
     startKoin {
         printLogger(Level.DEBUG)
         modules(sharedModule, platformModule())
