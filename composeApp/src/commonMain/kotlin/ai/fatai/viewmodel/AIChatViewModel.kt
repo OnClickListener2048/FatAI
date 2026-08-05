@@ -97,6 +97,19 @@ class AIChatViewModel(
 
     init {
         refresh()
+        // Remote changes (e.g. the server-generated conversation title) land in the local DB
+        // from the background pull; reload the visible lists so the UI stays current.
+        screenModelScope.launch {
+            serverSync.remoteChangesApplied.collect {
+                loadConversations()
+                val current = _state.value.currentConversationId
+                // Skip the message reload while streaming: the in-progress assistant message
+                // exists only in memory and would be wiped by a DB re-read.
+                if (current != null && !_state.value.isStreaming) {
+                    selectConversation(current)
+                }
+            }
+        }
     }
 
     /**

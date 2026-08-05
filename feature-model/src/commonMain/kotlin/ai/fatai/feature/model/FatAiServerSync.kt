@@ -19,8 +19,11 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -52,6 +55,10 @@ class FatAiServerSync(
     private val pendingModelUploads = mutableMapOf<String, CompletableDeferred<Unit>>()
     private val _lastError = MutableStateFlow<String?>(null)
     val lastError: StateFlow<String?> = _lastError.asStateFlow()
+
+    /** Emitted (at most once per pull cycle) when remote changes were applied to the local DB. */
+    private val _remoteChangesApplied = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+    val remoteChangesApplied: SharedFlow<Unit> = _remoteChangesApplied.asSharedFlow()
 
     private val _pendingCount = MutableStateFlow(outbox.pendingCount())
     val pendingCount: StateFlow<Long> = _pendingCount.asStateFlow()
@@ -196,6 +203,7 @@ class FatAiServerSync(
     }
 
     private suspend fun pullRemoteChanges() {
+        var appliedAny = false
         syncMutex.withLock {
             val token = accessToken()
             var cursor = outbox.cursor()
@@ -207,6 +215,7 @@ class FatAiServerSync(
                 body.entities.forEach { remoteStore.apply(it.toRemoteChange()) }
                 outbox.updateCursor(body.cursor)
                 cursor = body.cursor
+                appliedAny = body.entities.isNotEmpty()
             }
             var hasMore: Boolean
             do {
@@ -222,9 +231,12 @@ class FatAiServerSync(
                     outbox.updateCursor(changes.nextCursor)
                     cursor = changes.nextCursor
                 }
+                appliedAny = appliedAny || changes.changes.isNotEmpty()
             } while (hasMore)
             _lastError.value = null
         }
+        // Wake the UI (e.g. server-generated conversation titles) without spamming it.
+        if (appliedAny) _remoteChangesApplied.tryEmit(Unit)
     }
 
     private suspend fun send(operation: PendingSyncOperation) {
