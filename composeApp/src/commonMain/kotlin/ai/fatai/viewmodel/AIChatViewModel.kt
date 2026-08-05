@@ -568,11 +568,8 @@ class AIChatViewModel(
             sync = false,
             sources = assistantMsg.sources
         )
-        if (chatRepository.getMessageCount(conversationId) <= 2) {
-            messages.firstOrNull { it.type == ChatItemType.Question }?.let { firstMsg ->
-                chatRepository.updateConversationTitle(conversationId, generateTitle(firstMsg.content))
-            }
-        }
+        // The server generates a model-based title for new conversations and syncs it
+        // back through the change stream; nothing to update locally here.
         _state.value = _state.value.copy(isStreaming = false, assistantActivity = null)
         loadConversations()
         screenModelScope.launch {
@@ -768,10 +765,5 @@ class AIChatViewModel(
 
     private companion object {
         const val STREAM_RENDER_INTERVAL_MILLIS = 16L
-    }
-
-    private fun generateTitle(firstMessage: String): String {
-        val cleaned = firstMessage.take(40).replace("\n", " ").trim()
-        return if (cleaned.length >= 40) "$cleaned..." else cleaned
     }
 }

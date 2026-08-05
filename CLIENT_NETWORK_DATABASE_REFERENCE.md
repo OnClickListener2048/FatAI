@@ -125,7 +125,7 @@
 | `searchConversations` | `ChatRepository.searchConversations`。 | `query`、`userId`。 | 对未归档会话标题执行 `LIKE '%query%'` 搜索。 |
 | `selectConversationById` | `ChatRepository.getConversationById`。 | `id`、`userId`。 | 读取一条会话。 |
 | `insertConversation` | `ChatRepository.createConversation`。 | `id`、`userId`、`title`、`workspaceId`、`providerType`、`model`、`createdAt`、`updatedAt`、`isPinned`、`isArchived`。 | 新建会话。 |
-| `updateConversationTitle` | `ChatRepository.updateConversationTitle`；首轮聊天后自动生成标题时也会调用。 | `title`、`updatedAt`、`id`、`userId`。 | 更新标题和会话时间。 |
+| `updateConversationTitle` | `ChatRepository.updateConversationTitle`（用户手动重命名）。新会话标题由服务端在首轮聊天后异步用模型生成并经变更流同步。 | `title`、`updatedAt`、`id`、`userId`。 | 更新标题和会话时间。 |
 | `updateConversationPin` | `ChatRepository.toggleConversationPin`。 | `isPinned`、`updatedAt`、`id`、`userId`。 | 更新置顶状态和会话时间。 |
 | `updateConversationArchive` | `ChatRepository.toggleConversationArchive`。 | `isArchived`、`updatedAt`、`id`、`userId`。 | 归档或恢复会话并更新时间。 |
 | `updateConversationUpdatedAt` | `ChatRepository.insertMessage` 后调用。 | `updatedAt`、`id`、`userId`。 | 仅更新时间，用于排序。 |
