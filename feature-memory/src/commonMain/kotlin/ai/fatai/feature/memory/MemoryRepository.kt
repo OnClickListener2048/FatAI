@@ -84,6 +84,32 @@ class MemoryRepository(
         }
     }
 
+    fun update(id: String, content: String) {
+        require(content.isNotBlank()) { "Memory content cannot be blank" }
+        val entry = queries.selectMemoryById(id, currentUser.currentUserId).executeAsOneOrNull() ?: return
+        val trimmed = content.trim()
+        queries.updateMemory(updatedAt = now(), content = trimmed, id = id, userId = currentUser.currentUserId)
+        serverSync?.syncMemory(
+            id = entry.id,
+            scope = entry.scope,
+            content = trimmed,
+            workspaceId = entry.workspaceId,
+            conversationId = entry.conversationId,
+            kind = entry.kind,
+            isArchived = false
+        )
+    }
+
+    fun clearAll() {
+        val entries = queries.selectAllMemories(currentUser.currentUserId).executeAsList()
+        entries.forEach { archive(it.id) }
+    }
+
+    fun getAll(scope: MemoryScope? = null): List<MemoryEntry> {
+        val all = queries.selectAllMemories(currentUser.currentUserId).executeAsList().map { it.toMemoryEntry() }
+        return if (scope != null) all.filter { it.scope == scope } else all
+    }
+
     /** Upserts one model-classified global fact while retaining the latest value for its key. */
     fun upsertGlobalFact(key: String, fact: String): MemoryEntry? {
         val prefix = "$key: "

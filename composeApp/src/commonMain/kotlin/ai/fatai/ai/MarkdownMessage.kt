@@ -126,7 +126,8 @@ private fun MarkdownCodeBlock(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(8.dp))
+            .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(10.dp))
+            .clip(RoundedCornerShape(10.dp))
             .background(MaterialTheme.colorScheme.surfaceVariant)
             .horizontalScroll(scrollState)
             .padding(if (compactLayout) 10.dp else 12.dp)
@@ -234,7 +235,7 @@ private fun MarkdownTableRow(
     background: Color,
     drawBottomDivider: Boolean
 ) {
-    val dividerColor = MaterialTheme.colorScheme.outlineVariant
+    val dividerColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)
     Row(modifier = Modifier.height(IntrinsicSize.Min)) {
         repeat(columns) { index ->
             MarkdownRichText(

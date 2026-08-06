@@ -13,7 +13,9 @@ import ai.fatai.repo.MessageSource
 import ai.fatai.viewmodel.AIChatViewModel
 import ai.fatai.viewmodel.AssistantActivity
 import ai.fatai.viewmodel.ChatScrollPosition
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -57,6 +59,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.ModalNavigationDrawer
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
@@ -366,7 +369,7 @@ class AIChatScreen {
                     drawerContent = {
                         ModalDrawerSheet(
                             modifier = Modifier.width(288.dp),
-                            drawerContainerColor = MaterialTheme.colorScheme.surfaceVariant,
+                            drawerContainerColor = MaterialTheme.colorScheme.surfaceContainerLowest,
                             drawerContentColor = MaterialTheme.colorScheme.onSurface
                         ) {
                             Sidebar(closeAfterAction = true)
@@ -381,11 +384,10 @@ class AIChatScreen {
                         modifier = Modifier
                             .width(288.dp)
                             .fillMaxHeight()
-                            .background(MaterialTheme.colorScheme.surfaceVariant)
+                            .background(MaterialTheme.colorScheme.surfaceContainerLowest)
                     ) {
                         Sidebar(closeAfterAction = false)
                     }
-                    VerticalDivider()
                     Box(modifier = Modifier.weight(1f).fillMaxHeight()) {
                         ChatWorkspace(showDrawerToggle = false)
                     }
@@ -451,7 +453,8 @@ private fun WelcomeScreen(onNewChat: () -> Unit, providerName: String) {
         Card(
             modifier = Modifier.widthIn(max = 440.dp).fillMaxWidth(),
             shape = RoundedCornerShape(16.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
         ) {
             Column(modifier = Modifier.padding(18.dp)) {
                 Text(stringResource(Res.string.welcome_start_title), fontWeight = FontWeight.Medium)
@@ -540,6 +543,7 @@ private fun ConversationSidebar(
             Card(
                 modifier = Modifier.fillMaxWidth().clickable { workspaceMenuExpanded = true },
                 shape = RoundedCornerShape(9.dp),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
             ) {
                 Row(
@@ -587,7 +591,14 @@ private fun ConversationSidebar(
             onValueChange = { searchQuery = it; onSearch(it) },
             placeholder = { Text(stringResource(Res.string.search_chats)) },
             modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
-            singleLine = true
+            singleLine = true,
+            shape = RoundedCornerShape(10.dp),
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedBorderColor = Color.Transparent,
+                unfocusedBorderColor = Color.Transparent,
+                focusedContainerColor = MaterialTheme.colorScheme.surfaceContainer,
+                unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainer
+            )
         )
 
         val sorted = conversations.sortedWith(
@@ -607,9 +618,9 @@ private fun ConversationSidebar(
                         .clickable { onSelect(conv.id) },
                     colors = CardDefaults.cardColors(
                         containerColor = if (isSelected)
-                            MaterialTheme.colorScheme.primaryContainer
+                            MaterialTheme.colorScheme.surfaceContainerHigh
                         else
-                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                            Color.Transparent
                     ),
                     shape = RoundedCornerShape(8.dp)
                 ) {
@@ -674,6 +685,7 @@ private fun ConversationSidebar(
         Card(
             modifier = Modifier.fillMaxWidth().padding(12.dp).clickable(onClick = onSettings),
             shape = RoundedCornerShape(12.dp),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
         ) {
             Row(
@@ -839,8 +851,10 @@ private fun ChatMessagesArea(
         LazyColumn(
             state = listState,
             modifier = Modifier.fillMaxSize()
+                .widthIn(max = 820.dp)
+                .align(Alignment.TopCenter)
                 .padding(horizontal = if (compactLayout) 12.dp else 20.dp),
-            verticalArrangement = Arrangement.spacedBy(if (compactLayout) 12.dp else 18.dp)
+            verticalArrangement = Arrangement.spacedBy(if (compactLayout) 12.dp else 16.dp)
         ) {
             item { Spacer(Modifier.height(4.dp)) }
             items(messages, key = { it.id }) { msg ->
@@ -875,9 +889,10 @@ private fun ChatMessagesArea(
                 },
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
+                    .border(1.dp, MaterialTheme.colorScheme.outlineVariant, CircleShape)
                     .padding(end = if (compactLayout) 16.dp else 24.dp, bottom = 16.dp),
-                containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                contentColor = MaterialTheme.colorScheme.onSecondaryContainer
+                containerColor = MaterialTheme.colorScheme.surfaceContainer,
+                contentColor = MaterialTheme.colorScheme.onSurfaceVariant
             ) {
                 Icon(FeatherIcons.ChevronDown, stringResource(Res.string.back_to_bottom))
             }
@@ -910,10 +925,10 @@ private fun ChatBubble(
         if (!isQuestion) {
             Box(
                 modifier = Modifier.size(avatarSize).clip(CircleShape)
-                    .background(MaterialTheme.colorScheme.primary),
+                    .background(MaterialTheme.colorScheme.surfaceContainer),
                 contentAlignment = Alignment.Center
             ) {
-                Text("A", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                Text("A", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp, fontWeight = FontWeight.Bold)
             }
             Spacer(Modifier.width(if (compactLayout) 6.dp else 8.dp))
         }
@@ -927,15 +942,12 @@ private fun ChatBubble(
                 modifier = Modifier.widthIn(max = if (isQuestion) 520.dp else 720.dp),
                 colors = CardDefaults.cardColors(
                     containerColor = if (isQuestion)
-                        MaterialTheme.colorScheme.primary
+                        MaterialTheme.colorScheme.surfaceContainer
                     else
-                        MaterialTheme.colorScheme.surface
+                        Color.Transparent
                 ),
-                shape = RoundedCornerShape(
-                    topStart = if (isQuestion) 18.dp else 14.dp, topEnd = if (isQuestion) 18.dp else 14.dp,
-                    bottomStart = if (isQuestion) 6.dp else 14.dp,
-                    bottomEnd = if (isQuestion) 18.dp else 6.dp
-                )
+                shape = if (isQuestion) RoundedCornerShape(18.dp)
+                        else RoundedCornerShape(0.dp)
             ) {
                 Column(
                     modifier = Modifier.padding(
@@ -950,10 +962,7 @@ private fun ChatBubble(
                                     markdown = msg.content,
                                     document = msg.markdownDocument,
                                     compactLayout = compactLayout,
-                                    textColor = if (isQuestion)
-                                        MaterialTheme.colorScheme.onPrimary
-                                    else
-                                        MaterialTheme.colorScheme.onSurface
+                                    textColor = MaterialTheme.colorScheme.onSurface
                                 )
                             } else if (msg.reasoningContent.isNotBlank()) {
                                 SelectionContainer {
@@ -975,10 +984,7 @@ private fun ChatBubble(
                                 style = MaterialTheme.typography.bodyMedium.copy(
                                     fontSize = textSize,
                                     lineHeight = lineHeight,
-                                    color = if (isQuestion)
-                                        MaterialTheme.colorScheme.onPrimary
-                                    else
-                                        MaterialTheme.colorScheme.onSurface
+                                    color = MaterialTheme.colorScheme.onSurface
                                 )
                             )
                         }
@@ -1030,16 +1036,6 @@ private fun ChatBubble(
             }
         }
 
-        if (isQuestion) {
-            Spacer(Modifier.width(if (compactLayout) 6.dp else 8.dp))
-            Box(
-                modifier = Modifier.size(avatarSize).clip(CircleShape)
-                    .background(MaterialTheme.colorScheme.tertiary),
-                contentAlignment = Alignment.Center
-            ) {
-                Text("U", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-            }
-        }
     }
 }
 
@@ -1227,7 +1223,10 @@ private fun ChatInputBar(
     enabled: Boolean,
     modifier: Modifier = Modifier
 ) {
-    Column(modifier = modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp)) {
+    Box(modifier = modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp)) {
+        Column(
+            modifier = Modifier.widthIn(max = 720.dp).align(Alignment.TopCenter)
+        ) {
         if (attachments.isNotEmpty()) {
             LazyRow(
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -1285,6 +1284,13 @@ private fun ChatInputBar(
                     )
                 },
                 enabled = enabled && !isStreaming,
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = Color.Transparent,
+                    unfocusedBorderColor = Color.Transparent,
+                    disabledBorderColor = Color.Transparent,
+                    focusedContainerColor = Color.Transparent,
+                    unfocusedContainerColor = Color.Transparent
+                ),
                 textStyle = MaterialTheme.typography.bodyMedium.copy(
                     fontSize = 14.sp,
                     lineHeight = 20.sp
@@ -1315,11 +1321,11 @@ private fun ChatInputBar(
                             Box(
                                 modifier = Modifier
                                     .padding(start = 4.dp, end = 4.dp)
-                                    .size(34.dp)
+                                    .size(36.dp)
                                     .clip(CircleShape)
                                     .background(
                                         if (canSend) MaterialTheme.colorScheme.primary
-                                        else MaterialTheme.colorScheme.primary.copy(alpha = 0.35f)
+                                        else MaterialTheme.colorScheme.primary.copy(alpha = 0.25f)
                                     )
                                     .clickable(enabled = canSend, onClick = onSend),
                                 contentAlignment = Alignment.Center
@@ -1337,6 +1343,7 @@ private fun ChatInputBar(
                 shape = RoundedCornerShape(22.dp),
                 maxLines = 4
             )
+        }
         }
     }
 }

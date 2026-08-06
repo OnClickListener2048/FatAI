@@ -253,6 +253,12 @@ VALUES (:id, :userId, :scope, :workspaceId, :conversationId, :kind, :content, :c
 archiveMemory:
 UPDATE MemoryEntry SET isArchived = :isArchived, updatedAt = :updatedAt WHERE id = :id AND userId = :userId;
 
+updateMemory:
+UPDATE MemoryEntry SET content = :content, updatedAt = :updatedAt WHERE id = :id AND userId = :userId;
+
+selectAllMemories:
+SELECT * FROM MemoryEntry WHERE userId = :userId AND isArchived = 0 ORDER BY updatedAt DESC;
+
 selectActiveGlobalFactByContent:
 SELECT * FROM MemoryEntry
 WHERE userId = :userId AND scope = 'GLOBAL' AND kind = 'FACT' AND content = :content AND isArchived = 0

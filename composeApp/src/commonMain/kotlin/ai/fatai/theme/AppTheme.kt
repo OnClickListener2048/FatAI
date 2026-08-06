@@ -46,7 +46,12 @@ private val LightColors = lightColorScheme(
     onBackground = Gray900,
     outline = Gray200,
     outlineVariant = Gray200,
-    error = Color(0xFFDC2626)
+    error = Color(0xFFDC2626),
+    surfaceTint = Color.White,
+    surfaceContainerLowest = Gray100,
+    surfaceContainer = Gray100,
+    surfaceContainerHigh = Gray200,
+    surfaceContainerHighest = Gray300
 )
 
 private val DarkColors = darkColorScheme(
@@ -62,12 +67,17 @@ private val DarkColors = darkColorScheme(
     surface = Gray900,
     onSurface = Gray100,
     surfaceVariant = Gray850,
-    onSurfaceVariant = Gray400,
+    onSurfaceVariant = Gray500,
     background = Gray900,
     onBackground = Gray100,
     outline = Gray700,
-    outlineVariant = Gray700,
-    error = Color(0xFFF87171)
+    outlineVariant = Gray800,
+    error = Color(0xFFF87171),
+    surfaceTint = Gray900,
+    surfaceContainerLowest = Gray950,
+    surfaceContainer = Gray850,
+    surfaceContainerHigh = Gray800,
+    surfaceContainerHighest = Gray700
 )
 
 /** OpenWebUI switch track/thumb colors, keyed by on/off and dark/light. */

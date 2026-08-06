@@ -62,4 +62,17 @@
     <string name="default_key_name">%1$s 密钥</string>
     <string name="add">添加</string>
     <string name="cancel">取消</string>
+    <string name="personalization">个性化</string>
+    <string name="memory">记忆</string>
+    <string name="memory_description">让 FatAI 从对话中记住有用的信息，为你提供更个性化的回复。</string>
+    <string name="memory_updated">更新于 %1$s</string>
+    <string name="memory_source">来源：%1$s</string>
+    <string name="memory_add">添加记忆</string>
+    <string name="memory_add_hint">你希望 FatAI 记住什么？</string>
+    <string name="memory_save">保存</string>
+    <string name="memory_clear_all">清空所有记忆</string>
+    <string name="memory_clear_confirm">确定要清空所有记忆吗？此操作无法撤销。</string>
+    <string name="memory_empty">暂无记忆。记忆会在聊天过程中自动生成，你也可以手动添加。</string>
+    <string name="memory_based_on">基于你的记忆</string>
+    <string name="edit">编辑</string>
 </resources>

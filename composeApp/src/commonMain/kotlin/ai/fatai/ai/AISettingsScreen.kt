@@ -11,7 +11,9 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -24,6 +26,7 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -38,6 +41,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -52,10 +56,17 @@ import ai.fatai.repo.ApiKeyRepository
 import ai.fatai.repo.ApiKeyInfo
 import ai.fatai.feature.settings.SettingsRepository
 import ai.fatai.feature.settings.ThemeMode
+import ai.fatai.feature.memory.MemoryEntry
+import ai.fatai.feature.memory.MemoryRepository
+import ai.fatai.feature.memory.MemoryScope
+import ai.fatai.theme.OpenWebUISwitch
+import compose.icons.FeatherIcons
+import compose.icons.feathericons.Plus
 import fatai.composeapp.generated.resources.Res
 import fatai.composeapp.generated.resources.*
 import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.koinInject
+import kotlinx.coroutines.launch
 
 class AISettingsScreen {
 
@@ -64,14 +75,31 @@ class AISettingsScreen {
     fun Content(onBack: () -> Unit) {
         val apiKeyRepo = koinInject<ApiKeyRepository>()
         val settingsRepo = koinInject<SettingsRepository>()
+        val memoryRepo = koinInject<MemoryRepository>()
+        val scope = rememberCoroutineScope()
         var keys by remember { mutableStateOf(apiKeyRepo.getAllKeys()) }
         val themeMode by settingsRepo.themeMode.collectAsState()
         var showThemeDialog by remember { mutableStateOf(false) }
         var showAddDialog by remember { mutableStateOf(keys.isEmpty()) }
         var showDeleteDialog by remember { mutableStateOf<ApiKeyInfo?>(null) }
+        var memories by remember { mutableStateOf(memoryRepo.getAll(MemoryScope.GLOBAL)) }
+        var memoryEnabled by remember {
+            mutableStateOf(settingsRepo.getValue("memory_enabled") != "false")
+        }
+        var showAddMemory by remember { mutableStateOf(false) }
+        var showClearMemoryConfirmation by remember { mutableStateOf(false) }
+        var editingMemory by remember { mutableStateOf<MemoryEntry?>(null) }
+        var newMemoryContent by remember { mutableStateOf("") }
+        var editMemoryContent by remember { mutableStateOf("") }
 
         fun refresh() {
             keys = apiKeyRepo.getAllKeys()
+            memories = memoryRepo.getAll(MemoryScope.GLOBAL)
+        }
+
+        fun toggleMemory(enabled: Boolean) {
+            memoryEnabled = enabled
+            settingsRepo.putValue("memory_enabled", if (enabled) "true" else "false")
         }
 
         Scaffold(
@@ -101,6 +129,7 @@ class AISettingsScreen {
                 Card(
                     modifier = Modifier.fillMaxWidth().clickable { showThemeDialog = true },
                     shape = RoundedCornerShape(14.dp),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
                 ) {
                     Row(
@@ -121,12 +150,97 @@ class AISettingsScreen {
                 }
 
                 Spacer(Modifier.height(20.dp))
+                Text(stringResource(Res.string.personalization), style = MaterialTheme.typography.titleMedium)
+                Spacer(Modifier.height(8.dp))
+
+                // ---- Memory section ----
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(14.dp),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                ) {
+                    Column(modifier = Modifier.padding(14.dp)) {
+                        // Header with toggle
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(stringResource(Res.string.memory), fontWeight = FontWeight.Medium)
+                                Spacer(Modifier.height(4.dp))
+                                Text(
+                                    stringResource(Res.string.memory_description),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            Spacer(Modifier.width(12.dp))
+                            OpenWebUISwitch(
+                                checked = memoryEnabled,
+                                onCheckedChange = { toggleMemory(it) }
+                            )
+                        }
+
+                        if (memoryEnabled) {
+                            Spacer(Modifier.height(14.dp))
+                            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+                            Spacer(Modifier.height(10.dp))
+
+                            // Add memory button
+                            TextButton(onClick = { showAddMemory = true }) {
+                                Icon(FeatherIcons.Plus, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(Modifier.width(6.dp))
+                                Text(stringResource(Res.string.memory_add))
+                            }
+
+                            if (memories.isEmpty()) {
+                                Text(
+                                    stringResource(Res.string.memory_empty),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(vertical = 8.dp)
+                                )
+                            } else {
+                                Spacer(Modifier.height(4.dp))
+                                // Memory list
+                                memories.take(20).forEach { memory ->
+                                    MemoryItemRow(
+                                        memory = memory,
+                                        conversationTitle = null,
+                                        onEdit = {
+                                            editingMemory = memory
+                                            editMemoryContent = memory.content
+                                        },
+                                        onDelete = {
+                                            memoryRepo.archive(memory.id)
+                                            refresh()
+                                        }
+                                    )
+                                }
+
+                                // Clear all
+                                if (memories.size > 3) {
+                                    Spacer(Modifier.height(8.dp))
+                                    TextButton(onClick = { showClearMemoryConfirmation = true }) {
+                                        Text(
+                                            stringResource(Res.string.memory_clear_all),
+                                            color = MaterialTheme.colorScheme.error
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Spacer(Modifier.height(20.dp))
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     Text(stringResource(Res.string.model_providers), style = MaterialTheme.typography.titleMedium)
-                    Button(onClick = { showAddDialog = true }, shape = RoundedCornerShape(9.dp)) {
+                    Button(onClick = { showAddDialog = true }, shape = RoundedCornerShape(10.dp)) {
                         Text(stringResource(Res.string.add_key))
                     }
                 }
@@ -146,7 +260,7 @@ class AISettingsScreen {
                             modifier = Modifier.fillMaxWidth(),
                             colors = CardDefaults.cardColors(
                                 containerColor = if (key.isActive)
-                                    MaterialTheme.colorScheme.primaryContainer
+                                    MaterialTheme.colorScheme.surfaceContainerHigh
                                 else
                                     MaterialTheme.colorScheme.surface
                             ),
@@ -221,8 +335,11 @@ class AISettingsScreen {
         if (showDeleteDialog != null) {
             AlertDialog(
                 onDismissRequest = { showDeleteDialog = null },
-            title = { Text(stringResource(Res.string.delete_api_key)) },
-            text = { Text(stringResource(Res.string.delete_key_confirmation, showDeleteDialog!!.name)) },
+                shape = RoundedCornerShape(18.dp),
+                containerColor = MaterialTheme.colorScheme.surface,
+                tonalElevation = 0.dp,
+                title = { Text(stringResource(Res.string.delete_api_key)) },
+                text = { Text(stringResource(Res.string.delete_key_confirmation, showDeleteDialog!!.name)) },
                 confirmButton = {
                     TextButton(onClick = {
                         apiKeyRepo.deleteKey(showDeleteDialog!!.id)
@@ -243,6 +360,55 @@ class AISettingsScreen {
                 onSelect = { mode -> settingsRepo.setThemeMode(mode) }
             )
         }
+
+        if (showAddMemory) {
+            AddMemoryDialog(
+                content = newMemoryContent,
+                onContentChange = { newMemoryContent = it },
+                onDismiss = {
+                    showAddMemory = false
+                    newMemoryContent = ""
+                },
+                onSave = {
+                    if (newMemoryContent.isNotBlank()) {
+                        memoryRepo.save(newMemoryContent, MemoryScope.GLOBAL)
+                        newMemoryContent = ""
+                        showAddMemory = false
+                        refresh()
+                    }
+                }
+            )
+        }
+
+        if (editingMemory != null) {
+            EditMemoryDialog(
+                content = editMemoryContent,
+                onContentChange = { editMemoryContent = it },
+                onDismiss = {
+                    editingMemory = null
+                    editMemoryContent = ""
+                },
+                onSave = {
+                    if (editMemoryContent.isNotBlank()) {
+                        editingMemory?.let { memoryRepo.update(it.id, editMemoryContent) }
+                        editingMemory = null
+                        editMemoryContent = ""
+                        refresh()
+                    }
+                }
+            )
+        }
+
+        if (showClearMemoryConfirmation) {
+            ClearMemoryDialog(
+                onDismiss = { showClearMemoryConfirmation = false },
+                onConfirm = {
+                    memoryRepo.clearAll()
+                    showClearMemoryConfirmation = false
+                    refresh()
+                }
+            )
+        }
     }
 }
 
@@ -254,6 +420,9 @@ private fun ThemeSelectionDialog(
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
+        shape = RoundedCornerShape(18.dp),
+        containerColor = MaterialTheme.colorScheme.surface,
+        tonalElevation = 0.dp,
         title = { Text(stringResource(Res.string.theme)) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -266,7 +435,7 @@ private fun ThemeSelectionDialog(
                         },
                         shape = RoundedCornerShape(12.dp),
                         colors = CardDefaults.cardColors(
-                            containerColor = if (selected) MaterialTheme.colorScheme.primaryContainer
+                            containerColor = if (selected) MaterialTheme.colorScheme.surfaceContainerHigh
                             else MaterialTheme.colorScheme.surfaceVariant
                         )
                     ) {
@@ -287,6 +456,47 @@ private fun ThemeSelectionDialog(
             TextButton(onClick = onDismiss) { Text(stringResource(Res.string.cancel)) }
         }
     )
+}
+
+@Composable
+private fun MemoryItemRow(
+    memory: MemoryEntry,
+    conversationTitle: String?,
+    onEdit: () -> Unit,
+    onDelete: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp),
+        verticalAlignment = androidx.compose.ui.Alignment.Top
+    ) {
+        Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
+            Text(
+                memory.content,
+                style = MaterialTheme.typography.bodyMedium
+            )
+            if (conversationTitle != null) {
+                Text(
+                    stringResource(Res.string.memory_source, conversationTitle),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+        TextButton(
+            onClick = onEdit,
+            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 6.dp, vertical = 2.dp)
+        ) {
+            Text(stringResource(Res.string.edit), style = MaterialTheme.typography.labelSmall)
+        }
+        TextButton(
+            onClick = onDelete,
+            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 6.dp, vertical = 2.dp)
+        ) {
+            Text(stringResource(Res.string.delete), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error)
+        }
+    }
 }
 
 @Composable
@@ -439,6 +649,98 @@ private fun AddApiKeyDialog(
                 dismissKeyboard()
                 onDismiss()
             }) { Text(stringResource(Res.string.cancel)) }
+        }
+    )
+}
+
+// ---- Memory dialogs (add, edit, clear confirmation) ----
+
+@Composable
+private fun AddMemoryDialog(
+    content: String,
+    onContentChange: (String) -> Unit,
+    onDismiss: () -> Unit,
+    onSave: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        shape = RoundedCornerShape(18.dp),
+        containerColor = MaterialTheme.colorScheme.surface,
+        tonalElevation = 0.dp,
+        title = { Text(stringResource(Res.string.memory_add)) },
+        text = {
+            OutlinedTextField(
+                value = content,
+                onValueChange = onContentChange,
+                placeholder = { Text(stringResource(Res.string.memory_add_hint)) },
+                modifier = Modifier.fillMaxWidth().heightIn(min = 80.dp),
+                maxLines = 5
+            )
+        },
+        confirmButton = {
+            TextButton(
+                onClick = onSave,
+                enabled = content.isNotBlank()
+            ) { Text(stringResource(Res.string.memory_save)) }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(Res.string.cancel)) }
+        }
+    )
+}
+
+@Composable
+private fun EditMemoryDialog(
+    content: String,
+    onContentChange: (String) -> Unit,
+    onDismiss: () -> Unit,
+    onSave: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        shape = RoundedCornerShape(18.dp),
+        containerColor = MaterialTheme.colorScheme.surface,
+        tonalElevation = 0.dp,
+        title = { Text(stringResource(Res.string.edit)) },
+        text = {
+            OutlinedTextField(
+                value = content,
+                onValueChange = onContentChange,
+                modifier = Modifier.fillMaxWidth().heightIn(min = 80.dp),
+                maxLines = 5
+            )
+        },
+        confirmButton = {
+            TextButton(
+                onClick = onSave,
+                enabled = content.isNotBlank()
+            ) { Text(stringResource(Res.string.memory_save)) }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(Res.string.cancel)) }
+        }
+    )
+}
+
+@Composable
+private fun ClearMemoryDialog(
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        shape = RoundedCornerShape(18.dp),
+        containerColor = MaterialTheme.colorScheme.surface,
+        tonalElevation = 0.dp,
+        title = { Text(stringResource(Res.string.memory_clear_all)) },
+        text = { Text(stringResource(Res.string.memory_clear_confirm)) },
+        confirmButton = {
+            TextButton(onClick = onConfirm) {
+                Text(stringResource(Res.string.delete), color = MaterialTheme.colorScheme.error)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(Res.string.cancel)) }
         }
     )
 }
