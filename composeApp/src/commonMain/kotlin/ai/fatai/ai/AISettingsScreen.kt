@@ -63,6 +63,7 @@ import ai.fatai.feature.memory.MemoryScope
 import ai.fatai.theme.OpenWebUISwitch
 import ai.fatai.feature.model.FatAiServerSync
 import compose.icons.FeatherIcons
+import compose.icons.feathericons.ArrowLeft
 import compose.icons.feathericons.Plus
 import fatai.composeapp.generated.resources.Res
 import fatai.composeapp.generated.resources.*
@@ -118,7 +119,7 @@ class AISettingsScreen {
                     title = { Text(stringResource(Res.string.settings)) },
                     navigationIcon = {
                         IconButton(onClick = onBack) {
-                            Text("\u2190", fontWeight = FontWeight.Bold)
+                            Icon(FeatherIcons.ArrowLeft, contentDescription = stringResource(Res.string.back))
                         }
                     },
                     colors = TopAppBarDefaults.topAppBarColors(

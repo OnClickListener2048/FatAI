@@ -2,6 +2,7 @@
     <string name="open_conversations">打开会话列表</string>
     <string name="new_conversation">新建会话</string>
     <string name="settings">设置</string>
+    <string name="back">返回</string>
     <string name="new_chat">新建聊天</string>
     <string name="personal">个人</string>
     <string name="switch_workspace">切换工作区</string>
