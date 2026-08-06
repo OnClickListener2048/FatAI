@@ -37,6 +37,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -60,6 +61,7 @@ import ai.fatai.feature.memory.MemoryEntry
 import ai.fatai.feature.memory.MemoryRepository
 import ai.fatai.feature.memory.MemoryScope
 import ai.fatai.theme.OpenWebUISwitch
+import ai.fatai.feature.model.FatAiServerSync
 import compose.icons.FeatherIcons
 import compose.icons.feathericons.Plus
 import fatai.composeapp.generated.resources.Res
@@ -76,6 +78,7 @@ class AISettingsScreen {
         val apiKeyRepo = koinInject<ApiKeyRepository>()
         val settingsRepo = koinInject<SettingsRepository>()
         val memoryRepo = koinInject<MemoryRepository>()
+        val serverSync = koinInject<FatAiServerSync>()
         val scope = rememberCoroutineScope()
         var keys by remember { mutableStateOf(apiKeyRepo.getAllKeys()) }
         val themeMode by settingsRepo.themeMode.collectAsState()
@@ -91,6 +94,13 @@ class AISettingsScreen {
         var editingMemory by remember { mutableStateOf<MemoryEntry?>(null) }
         var newMemoryContent by remember { mutableStateOf("") }
         var editMemoryContent by remember { mutableStateOf("") }
+
+        // Reload memories every time the screen opens and when remote changes arrive.
+        LaunchedEffect(Unit) {
+            serverSync.remoteChangesApplied.collect {
+                memories = memoryRepo.getAll(MemoryScope.GLOBAL)
+            }
+        }
 
         fun refresh() {
             keys = apiKeyRepo.getAllKeys()
