@@ -118,11 +118,17 @@ class FatAiServerModelGateway(
                             // call for progress display and provenance.
                             emit(ChatStreamChunk(content = "", toolCalls = listOf(call)))
                         } else if (eventName == "done") {
+                            val donePayload = json.decodeFromString<ServerDoneEvent>(line.substringAfter(':').trim())
+                            val persisted = donePayload.persisted
+                            val persistError = donePayload.persistError
+                            if (!persisted) {
+                                println("WARN: server persist failed: $persistError — client will enqueue via outbox")
+                            }
                             println(
                                 "PERF => first_event=${firstChunkAt?.minus(streamStartedAt) ?: -1}ms " +
-                                    "total=${now - streamStartedAt}ms tool_calls=${toolCalls.size}"
+                                    "total=${now - streamStartedAt}ms tool_calls=${toolCalls.size} persisted=$persisted"
                             )
-                            emit(ChatStreamChunk(content = "", isDone = true, toolCalls = toolCalls.toList()))
+                            emit(ChatStreamChunk(content = "", isDone = true, toolCalls = toolCalls.toList(), persisted = persisted))
                         }
                     }
                     line.isBlank() -> eventName = null
@@ -193,4 +199,10 @@ private data class ServerToolCall(
 private data class ServerToolSource(
     val title: String,
     val url: String? = null
+)
+
+@Serializable
+private data class ServerDoneEvent(
+    val persisted: Boolean = true,
+    @SerialName("persist_error") val persistError: String? = null
 )

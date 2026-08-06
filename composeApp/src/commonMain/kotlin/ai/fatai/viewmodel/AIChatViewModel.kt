@@ -434,7 +434,7 @@ class AIChatViewModel(
                     userMessageId = messages.lastOrNull { it.type == ChatItemType.Question }?.id,
                     assistantMessageId = assistantMsg.id
                 )
-                val toolCalls = collectModelResponse(
+                val result = collectModelResponse(
                     prompt = prompt,
                     config = config,
                     context = context,
@@ -461,6 +461,21 @@ class AIChatViewModel(
                         if (calls.isNotEmpty()) _state.value = _state.value.copy(assistantActivity = calls.activity())
                     }
                 )
+                val toolCalls = result.toolCalls
+                // When the server failed to persist the chat turn, enqueue the messages
+                // via the outbox so other devices can still receive them.
+                if (!result.persisted) {
+                    messages.forEach { msg ->
+                        serverSync.syncMessage(
+                            id = msg.id,
+                            conversationId = msg.conversationId,
+                            role = if (msg.type == ChatItemType.Question) "user" else "assistant",
+                            content = msg.content,
+                            contentType = msg.contentType.name,
+                            reasoningContent = msg.reasoningContent
+                        )
+                    }
+                }
                 if (!shouldStopStream) {
                     val serverToolExecutions = toolCalls.map { call ->
                         ai.fatai.feature.tools.ToolExecution(
@@ -505,6 +520,11 @@ class AIChatViewModel(
         }
     }
 
+    private data class StreamResult(
+        val toolCalls: List<ai.fatai.feature.tools.ProviderToolCall>,
+        val persisted: Boolean
+    )
+
     private suspend fun collectModelResponse(
         prompt: List<ChatMessage>,
         config: ProviderConfig,
@@ -513,8 +533,9 @@ class AIChatViewModel(
         onContent: suspend (String) -> Unit,
         onReasoning: suspend (String) -> Unit = {},
         onToolCalls: (List<ai.fatai.feature.tools.ProviderToolCall>) -> Unit = {}
-    ): List<ai.fatai.feature.tools.ProviderToolCall> {
+    ): StreamResult {
         var toolCalls = emptyList<ai.fatai.feature.tools.ProviderToolCall>()
+        var persisted = true
         var lastRenderedAt = 0L
         modelGateway.stream(
             messages = prompt,
@@ -539,9 +560,12 @@ class AIChatViewModel(
                 toolCalls = toolCalls + chunk.toolCalls
                 onToolCalls(toolCalls)
             }
-            if (chunk.isDone) toolCalls = chunk.toolCalls
+            if (chunk.isDone) {
+                toolCalls = chunk.toolCalls
+                persisted = chunk.persisted
+            }
         }
-        return toolCalls
+        return StreamResult(toolCalls, persisted)
     }
 
     @OptIn(kotlin.time.ExperimentalTime::class)

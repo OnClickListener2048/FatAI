@@ -15,7 +15,9 @@ data class ChatStreamChunk(
     val isDone: Boolean = false,
     val finishReason: String? = null,
     val usage: ChatUsage? = null,
-    val toolCalls: List<ProviderToolCall> = emptyList()
+    val toolCalls: List<ProviderToolCall> = emptyList(),
+    /** Server confirmed the chat turn was persisted; false means the client should enqueue via outbox. */
+    val persisted: Boolean = true
 )
 
 @Serializable
