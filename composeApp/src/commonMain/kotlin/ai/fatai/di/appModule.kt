@@ -18,7 +18,7 @@ fun initKoin(appDeclaration: KoinAppDeclaration = {}) {
     println("initKoin")
     // MainActivity can be recreated without a process restart (back to the app, rotation,
     // reinstall), which would otherwise crash on the second startKoin call.
-    if (org.koin.core.context.GlobalContext.getOrNull() != null) return
+    if (org.koin.mp.KoinPlatformTools.defaultContext().getOrNull() != null) return
     startKoin {
         printLogger(Level.DEBUG)
         modules(sharedModule, appModule, platformModule())

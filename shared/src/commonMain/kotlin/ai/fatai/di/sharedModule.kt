@@ -26,10 +26,7 @@ import ai.fatai.feature.tools.DoclingDocumentTool
 import ai.fatai.feature.tools.ToolProviderAdapterRegistry
 import ai.fatai.feature.tools.ToolExecutionPolicy
 import ai.fatai.feature.tools.ToolRegistry
-import org.koin.core.context.startKoin
-import org.koin.core.logger.Level
 import org.koin.core.module.Module
-import org.koin.dsl.KoinAppDeclaration
 import org.koin.dsl.module
 
 val sharedModule = module {
@@ -85,13 +82,3 @@ val sharedModule = module {
 }
 
 expect fun platformModule(): Module
-
-fun initKoin2(appDeclaration: KoinAppDeclaration = {}) {
-    println("initKoin")
-    if (org.koin.core.context.GlobalContext.getOrNull() != null) return
-    startKoin {
-        printLogger(Level.DEBUG)
-        modules(sharedModule, platformModule())
-        appDeclaration()
-    }
-}

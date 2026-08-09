@@ -3,8 +3,9 @@ package ai.fatai
 import kotlin.test.Test
 import kotlin.test.assertNotNull
 import kotlin.test.assertFailsWith
-import org.koin.core.context.GlobalContext
 import org.koin.core.context.startKoin
+import org.koin.core.context.stopKoin
+import org.koin.mp.KoinPlatformTools
 
 class AppModuleTests {
 
