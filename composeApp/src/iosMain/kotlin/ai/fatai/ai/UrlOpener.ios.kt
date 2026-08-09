@@ -4,4 +4,4 @@ import platform.Foundation.NSURL
 import platform.UIKit.UIApplication
 
 actual fun openUrl(url: String): Boolean =
-    UIApplication.sharedApplication.openURL(NSURL.URLWithString(url))
+    NSURL.URLWithString(url)?.let { UIApplication.sharedApplication.openURL(it) } ?: false

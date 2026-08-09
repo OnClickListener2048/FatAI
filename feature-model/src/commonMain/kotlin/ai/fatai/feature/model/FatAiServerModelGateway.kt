@@ -23,6 +23,7 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import kotlin.time.TimeSource
 
 const val DEFAULT_FAT_AI_SERVER_URL = "http://127.0.0.1:8080"
 
@@ -44,13 +45,13 @@ class FatAiServerModelGateway(
         tools: List<ToolDefinition>,
         context: ChatContext
     ): Flow<ChatStreamChunk> = flow {
-        val preStart = System.currentTimeMillis()
+        val preStart = TimeSource.Monotonic.markNow()
         serverSync.awaitModelConfiguration(config.configurationId)
-        val configWait = System.currentTimeMillis() - preStart
-        val tokenStart = System.currentTimeMillis()
+        val configWait = preStart.elapsedNow().inWholeMilliseconds
+        val tokenStart = TimeSource.Monotonic.markNow()
         val accessToken = serverSync.accessToken()
-        val tokenWait = System.currentTimeMillis() - tokenStart
-        val streamStartedAt = System.currentTimeMillis()
+        val tokenWait = tokenStart.elapsedNow().inWholeMilliseconds
+        val streamStartedAt = TimeSource.Monotonic.markNow()
         var firstChunkAt: Long? = null
         println("PERF => pre(config_wait=${configWait}ms token_wait=${tokenWait}ms)")
         client.preparePost("${serverUrl.trimEnd('/')}/v1/chat/stream") {
@@ -102,7 +103,7 @@ class FatAiServerModelGateway(
                 when {
                     line.startsWith("event:") -> eventName = line.substringAfter(':').trim()
                     line.startsWith("data:") -> {
-                        val now = System.currentTimeMillis()
+                        val now = streamStartedAt.elapsedNow().inWholeMilliseconds
                         if (firstChunkAt == null && eventName != null) firstChunkAt = now
                         if (eventName == "message") {
                             val payload = json.decodeFromString<ServerStreamEvent>(line.substringAfter(':').trim())
@@ -125,8 +126,8 @@ class FatAiServerModelGateway(
                                 println("WARN: server persist failed: $persistError — client will enqueue via outbox")
                             }
                             println(
-                                "PERF => first_event=${firstChunkAt?.minus(streamStartedAt) ?: -1}ms " +
-                                    "total=${now - streamStartedAt}ms tool_calls=${toolCalls.size} persisted=$persisted"
+                                "PERF => first_event=${firstChunkAt ?: -1}ms " +
+                                    "total=${now}ms tool_calls=${toolCalls.size} persisted=$persisted"
                             )
                             emit(ChatStreamChunk(content = "", isDone = true, toolCalls = toolCalls.toList(), persisted = persisted))
                         }
