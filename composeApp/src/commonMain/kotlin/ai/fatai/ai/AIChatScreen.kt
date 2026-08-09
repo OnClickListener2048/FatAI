@@ -13,6 +13,7 @@ import ai.fatai.repo.MessageSource
 import ai.fatai.viewmodel.AIChatViewModel
 import ai.fatai.viewmodel.AssistantActivity
 import ai.fatai.viewmodel.ChatScrollPosition
+import ai.fatai.viewmodel.UploadProgress
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -47,6 +48,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -106,6 +108,7 @@ import compose.icons.feathericons.RefreshCw
 import compose.icons.feathericons.Send
 import compose.icons.feathericons.Settings
 import compose.icons.feathericons.Square
+import compose.icons.feathericons.UploadCloud
 import fatai.composeapp.generated.resources.Res
 import fatai.composeapp.generated.resources.add_api_key
 import fatai.composeapp.generated.resources.add_api_key_description
@@ -353,6 +356,7 @@ class AIChatScreen {
                             isStreaming = state.isStreaming,
                             onStop = { viewModel.stopGeneration() },
                             attachments = state.attachments,
+                            uploads = state.uploads,
                             onAttach = { filePicker.launch() },
                             onRemoveAttachment = { viewModel.removeAttachment(it) },
                             enabled = state.activeConfig != null,
@@ -1220,6 +1224,7 @@ private fun ChatInputBar(
     isStreaming: Boolean,
     onStop: () -> Unit,
     attachments: List<FileAsset>,
+    uploads: List<UploadProgress>,
     onAttach: () -> Unit,
     onRemoveAttachment: (String) -> Unit,
     enabled: Boolean,
@@ -1229,7 +1234,7 @@ private fun ChatInputBar(
         Column(
             modifier = Modifier.widthIn(max = 720.dp).align(Alignment.TopCenter)
         ) {
-        if (attachments.isNotEmpty()) {
+        if (attachments.isNotEmpty() || uploads.isNotEmpty()) {
             LazyRow(
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                 modifier = Modifier.padding(bottom = 6.dp)
@@ -1263,6 +1268,9 @@ private fun ChatInputBar(
                             }
                         }
                     }
+                }
+                items(uploads, key = { it.id }) { upload ->
+                    UploadProgressChip(upload)
                 }
             }
         }
@@ -1300,7 +1308,7 @@ private fun ChatInputBar(
                 modifier = Modifier
                     .fillMaxWidth()
                     .desktopSendOnEnter(
-                        enabled = enabled && (text.isNotBlank() || attachments.isNotEmpty()) && !isStreaming,
+                        enabled = enabled && (text.isNotBlank() || attachments.isNotEmpty()) && !isStreaming && uploads.isEmpty(),
                         onSend = onSend
                     ),
                 trailingIcon = {
@@ -1319,7 +1327,7 @@ private fun ChatInputBar(
                                 )
                             }
                         } else {
-                            val canSend = enabled && (text.isNotBlank() || attachments.isNotEmpty())
+                            val canSend = enabled && (text.isNotBlank() || attachments.isNotEmpty()) && uploads.isEmpty()
                             Box(
                                 modifier = Modifier
                                     .padding(start = 4.dp, end = 4.dp)
@@ -1346,6 +1354,46 @@ private fun ChatInputBar(
                 maxLines = 4
             )
         }
+        }
+    }
+}
+
+@Composable
+private fun UploadProgressChip(upload: UploadProgress) {
+    Card(
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer)
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.padding(start = 8.dp, end = 8.dp, top = 6.dp, bottom = 6.dp)
+        ) {
+            Icon(
+                FeatherIcons.UploadCloud,
+                contentDescription = null,
+                modifier = Modifier.size(13.dp)
+            )
+            Spacer(Modifier.width(4.dp))
+            Column {
+                Text(
+                    upload.displayName,
+                    style = MaterialTheme.typography.labelSmall,
+                    maxLines = 1,
+                    modifier = Modifier.widthIn(max = 130.dp)
+                )
+                LinearProgressIndicator(
+                    progress = { upload.fraction },
+                    modifier = Modifier
+                        .padding(top = 3.dp)
+                        .widthIn(max = 130.dp),
+                    color = MaterialTheme.colorScheme.primary,
+                    trackColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)
+                )
+            }
+            Spacer(Modifier.width(6.dp))
+            Text(
+                "${(upload.fraction * 100).toInt()}%",
+                style = MaterialTheme.typography.labelSmall
+            )
         }
     }
 }

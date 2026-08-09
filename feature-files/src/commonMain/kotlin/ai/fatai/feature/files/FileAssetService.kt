@@ -3,6 +3,7 @@ package ai.fatai.feature.files
 import io.ktor.client.HttpClient
 import io.ktor.client.request.forms.formData
 import io.ktor.client.request.forms.submitFormWithBinaryData
+import io.ktor.client.plugins.onUpload
 import io.ktor.client.request.header
 import io.ktor.client.request.parameter
 import io.ktor.client.statement.bodyAsText
@@ -27,12 +28,17 @@ class FileAssetService(
     private val serverUrl: String = DEFAULT_FILE_SERVER_URL,
     private val accessToken: suspend () -> String
 ) {
+    /**
+     * @param onProgress reports uploaded bytes; `total` is the request content length and may
+     * be 0 when the engine cannot determine it.
+     */
     suspend fun upload(
         fileName: String,
         mimeType: String,
         content: ByteArray,
         workspaceId: String?,
-        conversationId: String?
+        conversationId: String?,
+        onProgress: (sent: Long, total: Long) -> Unit = { _, _ -> }
     ): UploadedFile {
         val response = client.submitFormWithBinaryData(
             url = "${serverUrl.trimEnd('/')}/v1/files",
@@ -46,6 +52,9 @@ class FileAssetService(
             header("Authorization", "Bearer ${accessToken()}")
             workspaceId?.let { parameter("workspace_id", it) }
             conversationId?.let { parameter("conversation_id", it) }
+            onUpload { bytesSentTotal, contentLength ->
+                onProgress(bytesSentTotal, contentLength ?: 0L)
+            }
         }
         val body = response.bodyAsText()
         if (!response.status.isSuccess()) {

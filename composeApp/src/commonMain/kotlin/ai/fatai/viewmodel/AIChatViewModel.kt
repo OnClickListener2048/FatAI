@@ -46,11 +46,19 @@ import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
 import kotlin.time.Clock
 
+/** A file upload in flight; [fraction] is 0f..1f of bytes sent. */
+data class UploadProgress(
+    val id: String,
+    val displayName: String,
+    val fraction: Float
+)
+
 data class ChatScreenState(
     val conversations: List<Conversation> = emptyList(),
     val workspaces: List<Workspace> = emptyList(),
     val currentWorkspaceId: String = INBOX_WORKSPACE_ID,
     val attachments: List<FileAsset> = emptyList(),
+    val uploads: List<UploadProgress> = emptyList(),
     val messageAttachments: Map<String, List<FileAsset>> = emptyMap(),
     val messages: List<ChatItem> = emptyList(),
     val currentConversationId: String? = null,
@@ -310,6 +318,8 @@ class AIChatViewModel(
      * server-assigned id, so later document reads reference the file by id only. If the upload
      * fails (e.g. the server is unreachable), the file is attached under a [LOCAL_ATTACHMENT_PREFIX]
      * id and the legacy local-path read path is used instead.
+     *
+     * While an upload is in flight, the send button stays disabled ([ChatScreenState.uploads]).
      */
     @OptIn(ExperimentalUuidApi::class)
     fun attachFile(
@@ -323,14 +333,31 @@ class AIChatViewModel(
             newConversation()
             _state.value.currentConversationId
         } ?: return
+        val uploadId = Uuid.random().toString()
+        _state.value = _state.value.copy(
+            uploads = _state.value.uploads + UploadProgress(uploadId, displayName, fraction = 0f)
+        )
         screenModelScope.launch {
+            var lastShownPercent = -1
             val assetId = try {
                 fileAssetService.upload(
                     fileName = displayName,
                     mimeType = mimeType,
                     content = readBytes(),
                     workspaceId = _state.value.currentWorkspaceId,
-                    conversationId = conversationId
+                    conversationId = conversationId,
+                    onProgress = { sent, total ->
+                        val fraction = if (total <= 0L) 0f else (sent.toFloat() / total).coerceIn(0f, 1f)
+                        val percent = (fraction * 100).toInt()
+                        if (percent != lastShownPercent) {
+                            lastShownPercent = percent
+                            _state.value = _state.value.copy(
+                                uploads = _state.value.uploads.map { upload ->
+                                    if (upload.id == uploadId) upload.copy(fraction = fraction) else upload
+                                }
+                            )
+                        }
+                    }
                 ).id
             } catch (_: Exception) {
                 _toastEvents.emit("File upload failed, using the local path instead.")
@@ -345,7 +372,10 @@ class AIChatViewModel(
                 conversationId = conversationId,
                 id = assetId
             )
-            _state.value = _state.value.copy(attachments = fileAssetRepository.pendingForConversation(conversationId))
+            _state.value = _state.value.copy(
+                attachments = fileAssetRepository.pendingForConversation(conversationId),
+                uploads = _state.value.uploads.filterNot { it.id == uploadId }
+            )
         }
     }
 
@@ -358,7 +388,9 @@ class AIChatViewModel(
     fun sendMessage(analyzeAttachedFilePrompt: String) {
         val text = _state.value.inputText.trim()
         val pendingAttachments = _state.value.attachments
-        if ((text.isBlank() && pendingAttachments.isEmpty()) || _state.value.isStreaming) return
+        // Sending is blocked while an attachment is still uploading; the message would otherwise
+        // go out without the file (its server id is not known yet).
+        if ((text.isBlank() && pendingAttachments.isEmpty()) || _state.value.isStreaming || _state.value.uploads.isNotEmpty()) return
 
         val config = _state.value.activeConfig ?: run {
             screenModelScope.launch { _toastEvents.emit("Please configure an API key first") }
