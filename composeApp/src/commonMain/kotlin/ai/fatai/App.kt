@@ -10,7 +10,6 @@ import com.arkivanov.decompose.extensions.compose.stack.animation.stackAnimation
 import com.arkivanov.essenty.lifecycle.LifecycleRegistry
 import ai.fatai.ai.AIChatScreen
 import ai.fatai.ai.AISettingsScreen
-import ai.fatai.di.initKoin
 import ai.fatai.navigation.DefaultRootComponent
 import ai.fatai.navigation.RootComponent
 import ai.fatai.theme.FatAITheme
@@ -37,12 +36,5 @@ fun App() {
                 }
             }
         }
-    }
-}
-
-fun initKoinApp() {
-    // 初始化 Koin 应用程序模块
-    initKoin {
-        // 在这里可以添加其他 Koin 配置
     }
 }

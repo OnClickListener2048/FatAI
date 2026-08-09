@@ -27,9 +27,7 @@ import ai.fatai.feature.workspace.WorkspaceRepository
 import ai.fatai.feature.user.CurrentUserProvider
 import ai.fatai.repo.ChatItem
 import ai.fatai.repo.ChatRepository
-import ai.fatai.repo.Conversation
 import ai.fatai.repo.ApiKeyRepository
-import ai.fatai.repo.ApiKeyInfo
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
 
@@ -166,10 +164,6 @@ class AIChatViewModel(
         selectWorkspace(workspace.id)
     }
 
-    fun loadArchivedConversations(): List<Conversation> {
-        return chatRepository.getArchivedConversations()
-    }
-
     fun searchConversations(query: String) {
         if (query.isBlank()) {
             loadConversations()
@@ -207,22 +201,6 @@ class AIChatViewModel(
 
     fun updateInputText(text: String) {
         _state.value = _state.value.copy(inputText = text)
-    }
-
-    fun setActiveApiKey(keyInfo: ApiKeyInfo) {
-        apiKeyRepository.setActiveKey(keyInfo.id)
-        _state.value = _state.value.copy(
-            activeProvider = keyInfo.providerType,
-            activeConfig = ProviderConfig(
-                apiKey = keyInfo.apiKey,
-                baseUrl = keyInfo.baseUrl,
-                model = keyInfo.model.ifBlank { keyInfo.providerType.defaultModel },
-                configurationId = keyInfo.id,
-                configurationName = keyInfo.name,
-                providerType = keyInfo.providerType,
-                thinkingEnabled = keyInfo.thinkingEnabled
-            )
-        )
     }
 
     fun newConversation() {
@@ -419,33 +397,6 @@ class AIChatViewModel(
         )
     }
 
-    @OptIn(ExperimentalUuidApi::class)
-    fun continueGeneration() {
-        val config = _state.value.activeConfig ?: return
-        val messages = _state.value.messages
-        if (messages.isEmpty() || !_state.value.isStreaming) {
-            val lastAssistant = _state.value.messages.lastOrNull { it.type == ChatItemType.Answer }
-            if (lastAssistant != null) {
-                val convId = _state.value.currentConversationId ?: return
-                val history = _state.value.messages
-                    .filter { !it.isLoading && !it.content.startsWith("Error:") }
-                    .map {
-                        ChatMessage(role = if (it.type == ChatItemType.Question) "user" else "assistant", content = it.content)
-                    } + ChatMessage(role = "user", content = "Please continue from where you left off.")
-                chatStreamManager.stream(
-                    request = StreamRequest(
-                        conversationId = convId,
-                        assistantMessageId = Uuid.random().toString(),
-                        history = history,
-                        config = config,
-                        includeTools = false
-                    ),
-                    control = streamControl
-                )
-            }
-        }
-    }
-
     fun togglePin(conversationId: String) {
         val conv = chatRepository.getConversationById(conversationId) ?: return
         chatRepository.toggleConversationPin(conversationId, !conv.isPinned)
@@ -476,11 +427,6 @@ class AIChatViewModel(
                 messageAttachments = emptyMap()
             )
         }
-        loadConversations()
-    }
-
-    fun renameConversation(conversationId: String, newTitle: String) {
-        chatRepository.updateConversationTitle(conversationId, newTitle)
         loadConversations()
     }
 

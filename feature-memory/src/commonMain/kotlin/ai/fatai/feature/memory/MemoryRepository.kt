@@ -30,9 +30,6 @@ class MemoryRepository(
     @OptIn(kotlin.time.ExperimentalTime::class)
     private fun now() = Clock.System.now().toEpochMilliseconds()
 
-    fun recall(workspaceId: String?, conversationId: String?, limit: Long = 20): List<MemoryEntry> =
-        queries.selectMemoriesForContext(currentUser.currentUserId, workspaceId, conversationId, limit).executeAsList().map { it.toMemoryEntry() }
-
     @OptIn(ExperimentalUuidApi::class)
     fun save(
         content: String,

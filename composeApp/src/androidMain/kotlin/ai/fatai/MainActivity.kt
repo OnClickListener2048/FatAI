@@ -89,39 +89,8 @@ class MainActivity : ComponentActivity(), KoinComponent{
         }
     }
 }
-class Api
-class AuthService(private val api: Api) {
-    fun login() {  }
-}
-object MySdk {
-    private val api by lazy { Api() } // 手动管理依赖
-
-    val authService by lazy { AuthService(api) }
-}
 @Preview
 @Composable
 fun AppAndroidPreview() {
     App()
 }
-
-// 错误：`address` 不会影响 `equals()` 和 `hashCode()` 方法
-data class Person(val name: String, val age: Int) {
-    val address: String = "Unknown"
-
-    override fun toString(): String {
-        return super.toString()
-    }
-}
-
-sealed class User {
-    abstract val name: String
-}
-
-data class FreeUser(override val name: String) : User()
-data class PremiumUser(override val name: String, val stars: Int) : User()
-
-data class Response<T>(
-    val data: T,
-    val statusCode: Int,
-    val message: String
-)

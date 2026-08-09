@@ -161,11 +161,6 @@ class FatAiServerSync(
         enqueue("model_configuration", id, "DELETE", "{}")
     }
 
-    suspend fun upsertModelConfiguration(config: ProviderConfig, isActive: Boolean = true) {
-        syncModelConfiguration(config, isActive)
-        awaitModelConfiguration(config.configurationId)
-    }
-
     suspend fun awaitModelConfiguration(id: String?) {
         id?.let { pendingModelUploads.remove(it)?.await() }
     }

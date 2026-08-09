@@ -33,10 +33,6 @@ class ApiKeyRepository(
         return queries.selectAllApiKeys(currentUser.currentUserId).executeAsList().map(::removeLocalSecret)
     }
 
-    fun getKeysByProvider(providerType: ProviderType): List<ApiKeyInfo> {
-        return queries.selectApiKeysByProvider(currentUser.currentUserId, providerType).executeAsList().map(::removeLocalSecret)
-    }
-
     fun getActiveKey(): ApiKeyInfo? {
         // Reading the active configuration at app startup also migrates every legacy local secret.
         return getAllKeys().firstOrNull { it.isActive }
@@ -99,29 +95,6 @@ class ApiKeyRepository(
     fun deleteKey(id: String) {
         queries.deleteApiKey(id, currentUser.currentUserId)
         serverSync.deleteModelConfiguration(id)
-    }
-
-    fun importKeys(keys: List<ApiKeyInfo>) {
-        for (key in keys) {
-            val existing = queries.selectApiKeyById(key.id, currentUser.currentUserId).executeAsOneOrNull()
-            if (existing == null) {
-                queries.insertApiKey(
-                    id = key.id,
-                    userId = currentUser.currentUserId,
-                    providerType = key.providerType,
-                    name = key.name,
-                    apiKey = "",
-                    baseUrl = key.baseUrl.ifBlank { key.providerType.defaultBaseUrl },
-                    model = normalizeModel(key.providerType, key.model),
-                    isActive = if (key.isActive) 1L else 0L,
-                    thinkingEnabled = if (key.thinkingEnabled) 1L else 0L,
-                    createdAt = key.createdAt
-                )
-                if (key.apiKey.isNotBlank()) {
-                    serverSync.syncModelConfiguration(key.toProviderConfig(key.apiKey), isActive = key.isActive)
-                }
-            }
-        }
     }
 
     private fun removeLocalSecret(key: ai.fatai.database.sqldelight.ApiKey): ApiKeyInfo {

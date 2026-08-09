@@ -223,27 +223,10 @@ class ChatRepository(
                 ?: emptyList()
     }
 
-    fun updateMessageContent(id: String, content: String) {
-        queries.updateContentById(content = content, id = id, userId = currentUser.currentUserId)
-        queries.selectById(id, currentUser.currentUserId).executeAsOneOrNull()?.let { row ->
-            serverSync?.syncMessage(
-                id = row.id,
-                conversationId = row.conversationId,
-                role = if (row.type == ChatItemType.Question) "user" else "assistant",
-                content = content,
-                contentType = row.contentType.name
-            )
-        }
-    }
-
     fun deleteMessage(id: String) {
         val row = queries.selectById(id, currentUser.currentUserId).executeAsOneOrNull()
         queries.deleteById(id, currentUser.currentUserId)
         if (row != null) serverSync?.deleteMessage(id)
-    }
-
-    fun getMessageCount(conversationId: String): Int {
-        return queries.selectAllOrderedByTime(conversationId, currentUser.currentUserId).executeAsList().size
     }
 
     private fun syncConversation(id: String) {
