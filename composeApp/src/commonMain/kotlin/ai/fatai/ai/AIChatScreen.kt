@@ -154,6 +154,7 @@ import io.github.vinceglb.filekit.dialogs.FileKitType
 import io.github.vinceglb.filekit.dialogs.compose.rememberFilePickerLauncher
 import io.github.vinceglb.filekit.mimeType
 import io.github.vinceglb.filekit.name
+import io.github.vinceglb.filekit.readBytes
 import io.github.vinceglb.filekit.size
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
@@ -208,7 +209,8 @@ class AIChatScreen {
                     displayName = file.name,
                     mimeType = file.mimeType()?.toString() ?: "application/octet-stream",
                     localPath = file.toString(),
-                    sizeBytes = file.size()
+                    sizeBytes = file.size(),
+                    readBytes = { file.readBytes() }
                 )
             }
         }

@@ -37,10 +37,11 @@ class FileAssetRepository(private val queries: WatsonQueries, private val curren
         sizeBytes: Long,
         workspaceId: String?,
         conversationId: String?,
-        messageId: String? = null
+        messageId: String? = null,
+        id: String = Uuid.random().toString()
     ): FileAsset {
         val asset = FileAsset(
-            Uuid.random().toString(), currentUser.currentUserId, workspaceId, conversationId, messageId,
+            id, currentUser.currentUserId, workspaceId, conversationId, messageId,
             displayName, mimeType, localPath, sizeBytes, now()
         )
         queries.insertFileAsset(

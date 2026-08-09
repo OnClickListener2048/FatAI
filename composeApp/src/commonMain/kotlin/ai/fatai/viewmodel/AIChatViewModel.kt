@@ -26,6 +26,7 @@ import ai.fatai.feature.model.DEFAULT_FAT_AI_SERVER_URL
 import ai.fatai.feature.model.FatAiServerSync
 import ai.fatai.feature.files.FileAsset
 import ai.fatai.feature.files.FileAssetRepository
+import ai.fatai.feature.files.FileAssetService
 import ai.fatai.feature.memory.ConversationMemoryService
 import ai.fatai.feature.memory.UserMemoryExtractionService
 import ai.fatai.feature.tools.ToolCall
@@ -71,6 +72,12 @@ data class ChatScrollPosition(
 
 enum class AssistantActivity { Thinking, Searching, CheckingWeather, UsingTool }
 
+/**
+ * Prefix for FileAsset ids whose server upload failed; such assets are read through the legacy
+ * local-path mode instead of the server-side file store.
+ */
+private const val LOCAL_ATTACHMENT_PREFIX = "local-"
+
 class AIChatViewModel(
     private val chatRepository: ChatRepository,
     private val apiKeyRepository: ApiKeyRepository,
@@ -81,7 +88,8 @@ class AIChatViewModel(
     private val userMemoryExtractionService: UserMemoryExtractionService,
     private val toolRegistry: ToolRegistry,
     private val currentUser: CurrentUserProvider,
-    private val serverSync: FatAiServerSync
+    private val serverSync: FatAiServerSync,
+    private val fileAssetService: FileAssetService
 ) {
 
     private val screenModelScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
@@ -295,20 +303,50 @@ class AIChatViewModel(
         )
     }
 
-    fun attachFile(displayName: String, mimeType: String, localPath: String, sizeBytes: Long) {
+    /**
+     * Attaches a user-selected file and uploads it to the server (S3-like semantics).
+     *
+     * The upload runs in the background: on success the FileAsset is stored under the
+     * server-assigned id, so later document reads reference the file by id only. If the upload
+     * fails (e.g. the server is unreachable), the file is attached under a [LOCAL_ATTACHMENT_PREFIX]
+     * id and the legacy local-path read path is used instead.
+     */
+    @OptIn(ExperimentalUuidApi::class)
+    fun attachFile(
+        displayName: String,
+        mimeType: String,
+        localPath: String,
+        sizeBytes: Long,
+        readBytes: suspend () -> ByteArray
+    ) {
         val conversationId = _state.value.currentConversationId ?: run {
             newConversation()
             _state.value.currentConversationId
         } ?: return
-        fileAssetRepository.attach(
-            displayName = displayName,
-            mimeType = mimeType,
-            localPath = localPath,
-            sizeBytes = sizeBytes,
-            workspaceId = _state.value.currentWorkspaceId,
-            conversationId = conversationId
-        )
-        _state.value = _state.value.copy(attachments = fileAssetRepository.pendingForConversation(conversationId))
+        screenModelScope.launch {
+            val assetId = try {
+                fileAssetService.upload(
+                    fileName = displayName,
+                    mimeType = mimeType,
+                    content = readBytes(),
+                    workspaceId = _state.value.currentWorkspaceId,
+                    conversationId = conversationId
+                ).id
+            } catch (_: Exception) {
+                _toastEvents.emit("File upload failed, using the local path instead.")
+                LOCAL_ATTACHMENT_PREFIX + Uuid.random().toString()
+            }
+            fileAssetRepository.attach(
+                displayName = displayName,
+                mimeType = mimeType,
+                localPath = localPath,
+                sizeBytes = sizeBytes,
+                workspaceId = _state.value.currentWorkspaceId,
+                conversationId = conversationId,
+                id = assetId
+            )
+            _state.value = _state.value.copy(attachments = fileAssetRepository.pendingForConversation(conversationId))
+        }
     }
 
     fun removeAttachment(id: String) {
@@ -409,16 +447,20 @@ class AIChatViewModel(
                 } else {
                     _state.value = _state.value.copy(assistantActivity = AssistantActivity.UsingTool)
                     attachments.map { attachment ->
-                        toolRegistry.execute(
-                            ToolCall(
-                                "docling_document_read",
-                                mapOf(
-                                    "local_path" to attachment.localPath,
-                                    "display_name" to attachment.displayName,
-                                    "mime_type" to attachment.mimeType
-                                )
+                        val arguments = if (attachment.id.startsWith(LOCAL_ATTACHMENT_PREFIX)) {
+                            mapOf(
+                                "local_path" to attachment.localPath,
+                                "display_name" to attachment.displayName,
+                                "mime_type" to attachment.mimeType
                             )
-                        )
+                        } else {
+                            mapOf(
+                                "file_id" to attachment.id,
+                                "display_name" to attachment.displayName,
+                                "mime_type" to attachment.mimeType
+                            )
+                        }
+                        toolRegistry.execute(ToolCall("docling_document_read", arguments))
                     }.also {
                         _state.value = _state.value.copy(assistantActivity = AssistantActivity.Thinking)
                     }

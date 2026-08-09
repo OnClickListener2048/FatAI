@@ -5,6 +5,7 @@ import ai.fatai.network.provideHttpClient
 import ai.fatai.repo.ChatRepository
 import ai.fatai.repo.ApiKeyRepository
 import ai.fatai.feature.files.FileAssetRepository
+import ai.fatai.feature.files.FileAssetService
 import ai.fatai.feature.memory.MemoryRepository
 import ai.fatai.feature.memory.ConversationMemoryService
 import ai.fatai.feature.memory.UserMemoryExtractionService
@@ -21,6 +22,7 @@ import ai.fatai.feature.user.CurrentUserProvider
 import ai.fatai.feature.user.UserRepository
 import ai.fatai.feature.tools.DefaultTools
 import ai.fatai.feature.tools.DefaultToolProviderAdapters
+import ai.fatai.feature.tools.DoclingDocumentTool
 import ai.fatai.feature.tools.ToolProviderAdapterRegistry
 import ai.fatai.feature.tools.ToolExecutionPolicy
 import ai.fatai.feature.tools.ToolRegistry
@@ -68,9 +70,11 @@ val sharedModule = module {
     single { SettingsRepository(get(), get()) }
     single { SyncOutboxStore(get(), get()) }
     single { SyncRemoteStore(get(), get()) }
+    single { FileAssetService(get(), accessToken = { get<FatAiServerSync>().accessToken() }) }
+    single { DoclingDocumentTool(get(), accessTokenProvider = { get<FatAiServerSync>().accessToken() }) }
     // Docling conversion can produce richer Markdown than lightweight tools, while the registry
     // still imposes a strict prompt-sized bound on every tool result.
-    single { ToolRegistry(DefaultTools.all(get()), ToolExecutionPolicy(maxOutputCharacters = 24_000)) }
+    single { ToolRegistry(DefaultTools.all(get(), get<DoclingDocumentTool>()), ToolExecutionPolicy(maxOutputCharacters = 24_000)) }
     single { ToolProviderAdapterRegistry(DefaultToolProviderAdapters.all()) }
 
     single<ModelGateway> { FatAiServerModelGateway(get(), get()) }

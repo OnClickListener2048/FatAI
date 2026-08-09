@@ -23,6 +23,15 @@
 
 **聊天消息直存**：带 `conversation_id` 与 `assistant_message_id` 的聊天请求，服务端在流结束时把用户消息与助手回答直接写入服务端数据库并进入变更流（会话缺失时服务端自动补建）。客户端因此**不再**为聊天消息入队同步（`insertMessage(sync=false)`、`stopGeneration`/`continueGeneration` 同样只写本地缓存）；仅当流式调用失败时，客户端会把用户问题入队作为兜底。删除仍走 outbox（服务端 DELETE 采用"删即为胜"语义，不受直存 sequence 影响）。
 
+### 文件上传(对象存储)
+
+附件采用 S3-like 语义：用户选文件后客户端先 multipart 上传字节，服务端存到用户隔离目录（模拟对象存储）并返回资产 `id`；后续读取转换一律用 `file_id` 引用，客户端不再向服务端暴露本地路径。上传由 `feature-files/FileAssetService` 发起，均需要 Bearer 令牌。
+
+| 方法与路径 | 用途 | 请求参数 | 响应与客户端处理 |
+| --- | --- | --- | --- |
+| `POST /v1/files` | multipart 上传用户选择的文件。成功返回的 `id` 会作为本地 `FileAsset.id`（见数据库节）。上传失败时 `attachFile` 改为使用 `local-` 前缀的本地 id，并在发送时回退到 `docling_document_read` 的 `local_path` 模式。 | `file`：multipart 文件部分（`filename`、`Content-Type`）；查询参数 `workspace_id?`、`conversation_id?`。 | `{ id, display_name, storage_path, ... }`，`ignoreUnknownKeys` 解析 `id` 与 `display_name`；非 2xx 抛 `FileUploadException`。 |
+| `POST /v1/files/{file_id}/read` | 按 `file_id` 读取已上传文件并转 Markdown（服务端自行读存储，需鉴权）。由 `DoclingDocumentTool` 的 `file_id` 模式调用。 | 无请求体；路径参数 `file_id`。 | `{ displayName, markdown }`；错误 `{ code, message }`。 |
+
 ### FatAI 服务同步接口
 
 下表请求均由 `FatAiServerSync` 后台发送，均需要 Bearer 令牌。客户端本地写入不会阻塞等待网络；远程回写直接更新本地缓存，不会重新进入 outbox。
@@ -56,7 +65,7 @@
 | --- | --- | --- | --- |
 | `POST /v1/tools/search` | 公共 Web 搜索，结果会作为可引用的工具上下文。 | `query`：非空查询词；`maxResults`：1 到 10，默认 5。 | `{ query, results: [{ title, snippet, url, source }] }`。空结果会返回“未找到”文本。 |
 | `POST /v1/tools/weather` | 查询指定地点的天气或预报资料。 | `location`：非空城市/地区/国家；`maxResults`：1 到 5，默认 3。 | `{ location, results: [{ title, snippet, url, source }] }`。空结果会返回“未找到”文本。 |
-| `POST /v1/tools/document-read` | 通过 Docling 抽取用户主动选择的文件或图片为 Markdown。该 Tool 不暴露给模型，因此模型不能传入任意本地路径。 | `localPath`：用户选择的本地路径；`displayName`：文件名；`mimeType`：MIME 类型。三者都不能为空。 | 成功：`{ displayName, markdown }`；错误：`{ code, message }`。抽取 Markdown 会作为附件上下文进入后续聊天。 |
+| `POST /v1/tools/document-read` | 通过 Docling 抽取用户主动选择的文件或图片为 Markdown。该 Tool 不暴露给模型，因此模型不能传入任意本地路径。两种模式：`file_id`（已上传文件，带 Bearer 令牌调 `POST /v1/files/{file_id}/read`，见"文件上传"节）与 `local_path`（旧桌面迁移模式，仅服务端 `ALLOW_LOCAL_DOCUMENT_PATHS=true` 时可用）。 | `file_id`：服务端存储的文件 id（与 `local_path` 二选一）；`localPath`：用户选择的本地路径；`displayName`：文件名；`mimeType`：MIME 类型。后两者与二者之一不能为空。 | 成功：`{ displayName, markdown }`；错误：`{ code, message }`。抽取 Markdown 会作为附件上下文进入后续聊天。 |
 
 ### OpenAI 兼容模型直连接口
 
@@ -92,7 +101,7 @@
 | `Workspace` | 工作空间：`id`、`userId`、`name`、`systemPrompt`、创建/更新时间、`isArchived`。默认 Inbox ID 为 `inbox`。 |
 | `MemoryEntry` | 长短期记忆：`id`、`userId`、`scope`、`workspaceId?`、`conversationId?`、`kind`、`content`、时间、`isArchived`。 |
 | `PromptTemplate` | 提示词模板：`id`、`userId`、`name`、`content`、`workspaceId?`、`priority`、`isEnabled`、时间。 |
-| `FileAsset` | 已选附件的本地元数据：`id`、`userId`、`workspaceId?`、`conversationId?`、`messageId?`、文件名、MIME、`localPath`、`sizeBytes`、`createdAt`。文件内容不写入数据库。 |
+| `FileAsset` | 已选附件的本地元数据：`id`、`userId`、`workspaceId?`、`conversationId?`、`messageId?`、文件名、MIME、`localPath`、`sizeBytes`、`createdAt`。文件内容不写入数据库。`id` 在附件上传成功后为服务端返回的资产 id（用于 `file_id` 读取）；上传失败时使用 `local-` 前缀的本地 UUID，发送时回退到 `local_path` 模式。 |
 | `AppSetting` | 按用户保存的键值设置：`userId` + `key` 为联合主键，另有 `value`、`updatedAt`。主题和 FatAI 设备 ID 使用此表。 |
 | `SyncSequence` | 每个实体的本地单调序号，避免乱序操作覆盖。 |
 | `SyncOutbox` | 持久化同步任务：状态包括 `PENDING`、`SENDING`、`RETRYING`、`FAILED`，并记录重试次数及错误分类；同一实体的未发送任务会合并为最新状态，避免队列膨胀。 |
@@ -192,6 +201,6 @@ Android/iOS 使用各自平台 SQLite 沙盒路径，验收步骤相同：清除
 | --- | --- | --- | --- |
 | `selectFilesForConversation` | `FileAssetRepository.forConversation`。 | `conversationId`、`userId`。 | 按创建时间正序读取会话全部附件。 |
 | `selectPendingFilesForConversation` | `FileAssetRepository.pendingForConversation`。 | `conversationId`、`userId`。 | 读取尚未关联消息（`messageId IS NULL`）的待发送附件。 |
-| `insertFileAsset` | `FileAssetRepository.attach`。 | `id`、`userId`、`workspaceId?`、`conversationId?`、`messageId?`、`displayName`、`mimeType`、`localPath`、`sizeBytes`、`createdAt`。 | 保存本地附件元数据。 |
+| `insertFileAsset` | `FileAssetRepository.attach`。`attach` 新增 `id` 参数：默认生成 UUID；上传成功后传入服务端资产 id，失败时传入 `local-` 前缀 id。 | `id`、`userId`、`workspaceId?`、`conversationId?`、`messageId?`、`displayName`、`mimeType`、`localPath`、`sizeBytes`、`createdAt`。 | 保存本地附件元数据。 |
 | `assignPendingFilesToMessage` | `FileAssetRepository.assignPendingToMessage`，发送用户消息后调用。 | `messageId`、`conversationId`、`userId`。 | 将该会话所有待发送附件关联到新消息。 |
 | `deleteFileAsset` | `FileAssetRepository.delete`。 | `id`、`userId`。 | 删除附件元数据；不会删除 `localPath` 指向的物理文件。 |

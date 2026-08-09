@@ -9,7 +9,9 @@ import kotlin.uuid.Uuid
 
 /** Built-in tools are offline-first and safe to expose on every supported platform. */
 object DefaultTools {
-    fun all(httpClient: HttpClient): List<Tool> = listOf(
+    // DoclingDocumentTool is built by DI so it can carry the Bearer-token provider for
+    // server-side file reads (file_id mode).
+    fun all(httpClient: HttpClient, doclingTool: DoclingDocumentTool): List<Tool> = listOf(
         CalculatorTool(),
         TextTransformTool(),
         JsonTool(),
@@ -17,7 +19,7 @@ object DefaultTools {
         UuidTool(),
         WebSearchTool(httpClient),
         WeatherTool(httpClient),
-        DoclingDocumentTool(httpClient)
+        doclingTool
     )
 }
 
