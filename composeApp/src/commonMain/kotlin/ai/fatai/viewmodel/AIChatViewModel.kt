@@ -1,11 +1,8 @@
 package ai.fatai.viewmodel
 
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -16,76 +13,34 @@ import kotlinx.coroutines.launch
 import ai.fatai.bean.ChatItemType
 import ai.fatai.bean.MessageContentType
 import ai.fatai.chat.ChatMessage
-import ai.fatai.chat.ChatStreamChunk
 import ai.fatai.chat.ProviderConfig
 import ai.fatai.chat.ProviderType
-import ai.fatai.core.locale.currentLanguageTag
-import ai.fatai.feature.model.ModelGateway
-import ai.fatai.feature.model.ChatContext
-import ai.fatai.feature.model.DEFAULT_FAT_AI_SERVER_URL
 import ai.fatai.feature.model.FatAiServerSync
+import ai.fatai.feature.model.ModelGateway
 import ai.fatai.feature.files.FileAsset
 import ai.fatai.feature.files.FileAssetRepository
 import ai.fatai.feature.files.FileAssetService
 import ai.fatai.feature.memory.ConversationMemoryService
 import ai.fatai.feature.memory.UserMemoryExtractionService
-import ai.fatai.feature.tools.ToolCall
 import ai.fatai.feature.tools.ToolRegistry
-import ai.fatai.feature.tools.ToolResult
-import ai.fatai.feature.workspace.INBOX_WORKSPACE_ID
-import ai.fatai.feature.workspace.Workspace
 import ai.fatai.feature.workspace.WorkspaceRepository
 import ai.fatai.feature.user.CurrentUserProvider
 import ai.fatai.repo.ChatItem
 import ai.fatai.repo.ChatRepository
 import ai.fatai.repo.Conversation
-import ai.fatai.repo.MessageSource
 import ai.fatai.repo.ApiKeyRepository
 import ai.fatai.repo.ApiKeyInfo
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
-import kotlin.time.Clock
-
-/** A file upload in flight; [fraction] is 0f..1f of bytes sent. */
-data class UploadProgress(
-    val id: String,
-    val displayName: String,
-    val fraction: Float
-)
-
-data class ChatScreenState(
-    val conversations: List<Conversation> = emptyList(),
-    val workspaces: List<Workspace> = emptyList(),
-    val currentWorkspaceId: String = INBOX_WORKSPACE_ID,
-    val attachments: List<FileAsset> = emptyList(),
-    val uploads: List<UploadProgress> = emptyList(),
-    val messageAttachments: Map<String, List<FileAsset>> = emptyMap(),
-    val messages: List<ChatItem> = emptyList(),
-    val currentConversationId: String? = null,
-    val chatScrollPosition: ChatScrollPosition = ChatScrollPosition(),
-    val isStreaming: Boolean = false,
-    val assistantActivity: AssistantActivity? = null,
-    val isLoading: Boolean = false,
-    val inputText: String = "",
-    val activeProvider: ProviderType = ProviderType.OpenAI,
-    val activeConfig: ProviderConfig? = null
-)
-
-data class ChatScrollPosition(
-    val conversationId: String? = null,
-    val firstVisibleItemIndex: Int = 0,
-    val firstVisibleItemScrollOffset: Int = 0,
-    val hasSavedPosition: Boolean = false
-)
-
-enum class AssistantActivity { Thinking, Searching, CheckingWeather, UsingTool }
 
 /**
- * Prefix for FileAsset ids whose server upload failed; such assets are read through the legacy
- * local-path mode instead of the server-side file store.
+ * State hub for the chat screen.
+ *
+ * Owns the [ChatScreenState] flow and delegates the two long-running concerns to focused
+ * collaborators: [ChatStreamManager] for the model streaming pipeline and [AttachmentManager]
+ * for file uploads. Everything else (workspaces, conversations, API keys, scroll position)
+ * stays here.
  */
-private const val LOCAL_ATTACHMENT_PREFIX = "local-"
-
 class AIChatViewModel(
     private val chatRepository: ChatRepository,
     private val apiKeyRepository: ApiKeyRepository,
@@ -108,8 +63,31 @@ class AIChatViewModel(
     private val _toastEvents = MutableSharedFlow<String>()
     val toastEvents: SharedFlow<String> = _toastEvents.asSharedFlow()
 
-    private var streamJob: Job? = null
-    private var shouldStopStream = false
+    /** Tracks the in-flight model stream so [stopGeneration] can cancel it. */
+    private val streamControl = StreamControl()
+
+    private val chatStreamManager = ChatStreamManager(
+        chatRepository = chatRepository,
+        modelGateway = modelGateway,
+        toolRegistry = toolRegistry,
+        conversationMemoryService = conversationMemoryService,
+        currentUser = currentUser,
+        serverSync = serverSync,
+        scope = screenModelScope,
+        getState = { _state.value },
+        onState = { _state.value = it },
+        onUpdateMessage = ::updateMessageInState,
+        onLoadConversations = ::loadConversations
+    )
+
+    private val attachmentManager = AttachmentManager(
+        fileAssetService = fileAssetService,
+        fileAssetRepository = fileAssetRepository,
+        scope = screenModelScope,
+        getState = { _state.value },
+        onState = { _state.value = it },
+        onToast = { message -> screenModelScope.launch { _toastEvents.emit(message) } }
+    )
 
     init {
         refresh()
@@ -156,7 +134,9 @@ class AIChatViewModel(
         )
         loadActiveConfig()
         selectedConversationId?.let(::selectConversation)
-    }    fun loadConversations() {
+    }
+
+    fun loadConversations() {
         val conversations = chatRepository.getConversations(_state.value.currentWorkspaceId)
         _state.value = _state.value.copy(conversations = conversations)
     }
@@ -312,16 +292,8 @@ class AIChatViewModel(
     }
 
     /**
-     * Attaches a user-selected file and uploads it to the server (S3-like semantics).
-     *
-     * The upload runs in the background: on success the FileAsset is stored under the
-     * server-assigned id, so later document reads reference the file by id only. If the upload
-     * fails (e.g. the server is unreachable), the file is attached under a [LOCAL_ATTACHMENT_PREFIX]
-     * id and the legacy local-path read path is used instead.
-     *
-     * While an upload is in flight, the send button stays disabled ([ChatScreenState.uploads]).
+     * Attaches a user-selected file; the upload (with progress) runs in [AttachmentManager].
      */
-    @OptIn(ExperimentalUuidApi::class)
     fun attachFile(
         displayName: String,
         mimeType: String,
@@ -329,60 +301,23 @@ class AIChatViewModel(
         sizeBytes: Long,
         readBytes: suspend () -> ByteArray
     ) {
-        val conversationId = _state.value.currentConversationId ?: run {
-            newConversation()
-            _state.value.currentConversationId
-        } ?: return
-        val uploadId = Uuid.random().toString()
-        _state.value = _state.value.copy(
-            uploads = _state.value.uploads + UploadProgress(uploadId, displayName, fraction = 0f)
-        )
-        screenModelScope.launch {
-            var lastShownPercent = -1
-            val assetId = try {
-                fileAssetService.upload(
-                    fileName = displayName,
-                    mimeType = mimeType,
-                    content = readBytes(),
-                    workspaceId = _state.value.currentWorkspaceId,
-                    conversationId = conversationId,
-                    onProgress = { sent, total ->
-                        val fraction = if (total <= 0L) 0f else (sent.toFloat() / total).coerceIn(0f, 1f)
-                        val percent = (fraction * 100).toInt()
-                        if (percent != lastShownPercent) {
-                            lastShownPercent = percent
-                            _state.value = _state.value.copy(
-                                uploads = _state.value.uploads.map { upload ->
-                                    if (upload.id == uploadId) upload.copy(fraction = fraction) else upload
-                                }
-                            )
-                        }
-                    }
-                ).id
-            } catch (_: Exception) {
-                _toastEvents.emit("File upload failed, using the local path instead.")
-                LOCAL_ATTACHMENT_PREFIX + Uuid.random().toString()
+        attachmentManager.attachFile(
+            displayName = displayName,
+            mimeType = mimeType,
+            localPath = localPath,
+            sizeBytes = sizeBytes,
+            readBytes = readBytes,
+            ensureConversation = {
+                _state.value.currentConversationId ?: run {
+                    newConversation()
+                    _state.value.currentConversationId
+                }
             }
-            fileAssetRepository.attach(
-                displayName = displayName,
-                mimeType = mimeType,
-                localPath = localPath,
-                sizeBytes = sizeBytes,
-                workspaceId = _state.value.currentWorkspaceId,
-                conversationId = conversationId,
-                id = assetId
-            )
-            _state.value = _state.value.copy(
-                attachments = fileAssetRepository.pendingForConversation(conversationId),
-                uploads = _state.value.uploads.filterNot { it.id == uploadId }
-            )
-        }
+        )
     }
 
     fun removeAttachment(id: String) {
-        fileAssetRepository.delete(id)
-        val conversationId = _state.value.currentConversationId ?: return
-        _state.value = _state.value.copy(attachments = fileAssetRepository.pendingForConversation(conversationId))
+        attachmentManager.removeAttachment(id)
     }
 
     fun sendMessage(analyzeAttachedFilePrompt: String) {
@@ -439,279 +374,9 @@ class AIChatViewModel(
         streamChat(conversationId, messages, pendingAttachments)
     }
 
-    private fun streamChat(
-        conversationId: String,
-        messages: List<ChatItem>,
-        attachments: List<FileAsset> = emptyList(),
-        replaceMessageId: String? = null
-    ) {
-        val config = _state.value.activeConfig ?: return
-        @OptIn(ExperimentalUuidApi::class, kotlin.time.ExperimentalTime::class)
-        var assistantMsg = ChatItem(
-            id = Uuid.random().toString(),
-            userId = currentUser.currentUserId,
-            conversationId = conversationId,
-            content = "",
-            type = ChatItemType.Answer,
-            contentType = MessageContentType.Markdown,
-            createdAt = Clock.System.now().toEpochMilliseconds(),
-            isLoading = true
-        )
-
-        _state.value = _state.value.copy(
-            messages = messages + assistantMsg,
-            isStreaming = true,
-            assistantActivity = AssistantActivity.Thinking
-        )
-
-        shouldStopStream = false
-        streamJob = screenModelScope.launch {
-            try {
-                val history = messages
-                    .filter { !it.isLoading && !it.content.startsWith("Error:") }
-                    .map {
-                    ChatMessage(role = if (it.type == ChatItemType.Question) "user" else "assistant", content = it.content)
-                }
-
-                val isAttachmentAnalysis = attachments.isNotEmpty()
-                val documentExecutions = if (attachments.isEmpty()) {
-                    emptyList()
-                } else {
-                    _state.value = _state.value.copy(assistantActivity = AssistantActivity.UsingTool)
-                    attachments.map { attachment ->
-                        val arguments = if (attachment.id.startsWith(LOCAL_ATTACHMENT_PREFIX)) {
-                            mapOf(
-                                "local_path" to attachment.localPath,
-                                "display_name" to attachment.displayName,
-                                "mime_type" to attachment.mimeType
-                            )
-                        } else {
-                            mapOf(
-                                "file_id" to attachment.id,
-                                "display_name" to attachment.displayName,
-                                "mime_type" to attachment.mimeType
-                            )
-                        }
-                        toolRegistry.execute(ToolCall("docling_document_read", arguments))
-                    }.also {
-                        _state.value = _state.value.copy(assistantActivity = AssistantActivity.Thinking)
-                    }
-                }
-                val toolResults = documentExecutions.map { execution -> formatToolResult(execution) }
-                val prompt = if (isAttachmentAnalysis) history.takeLast(1) else history
-                val context = ChatContext(
-                    workspaceId = _state.value.currentWorkspaceId,
-                    conversationId = conversationId,
-                    responseLanguageTag = currentLanguageTag(),
-                    toolResults = toolResults,
-                    includeContextualReferences = !isAttachmentAnalysis,
-                    userMessageId = messages.lastOrNull { it.type == ChatItemType.Question }?.id,
-                    assistantMessageId = assistantMsg.id
-                )
-                val result = collectModelResponse(
-                    prompt = prompt,
-                    config = config,
-                    context = context,
-                    includeTools = true,
-                    onContent = { content ->
-                    if (content.isNotEmpty()) {
-                        assistantMsg = assistantMsg.copy(
-                            content = assistantMsg.content + content,
-                            isLoading = false
-                        )
-                        updateMessageInState(assistantMsg)
-                    }
-                    },
-                    onReasoning = { reasoningContent ->
-                    if (reasoningContent.isNotEmpty()) {
-                        assistantMsg = assistantMsg.copy(
-                            reasoningContent = assistantMsg.reasoningContent + reasoningContent,
-                            isLoading = false
-                        )
-                        updateMessageInState(assistantMsg)
-                    }
-                    },
-                    onToolCalls = { calls ->
-                        if (calls.isNotEmpty()) _state.value = _state.value.copy(assistantActivity = calls.activity())
-                    }
-                )
-                val toolCalls = result.toolCalls
-                // When the server failed to persist the chat turn, enqueue the messages
-                // via the outbox so other devices can still receive them.
-                if (!result.persisted) {
-                    messages.forEach { msg ->
-                        serverSync.syncMessage(
-                            id = msg.id,
-                            conversationId = msg.conversationId,
-                            role = if (msg.type == ChatItemType.Question) "user" else "assistant",
-                            content = msg.content,
-                            contentType = msg.contentType.name,
-                            reasoningContent = msg.reasoningContent
-                        )
-                    }
-                }
-                if (!shouldStopStream) {
-                    val serverToolExecutions = toolCalls.map { call ->
-                        ai.fatai.feature.tools.ToolExecution(
-                            call = ToolCall(call.name, call.arguments),
-                            // The server executes the tool and returns structured sources.
-                            result = ToolResult.Success("", sources = call.sources)
-                        )
-                    }
-                    val referencedExecutions = documentExecutions + serverToolExecutions
-                    if (referencedExecutions.isNotEmpty()) {
-                        assistantMsg = assistantMsg.withToolSources(referencedExecutions)
-                        updateMessageInState(assistantMsg)
-                    }
-                    completeAssistantResponse(conversationId, messages, assistantMsg, config)
-                    // The replacement succeeded; the regenerated-away answer can now go.
-                    replaceMessageId?.let { oldMessageId ->
-                        if (oldMessageId != assistantMsg.id) chatRepository.deleteMessage(oldMessageId)
-                    }
-                }
-            } catch (e: CancellationException) {
-                // The user stopped generation; stopGeneration() keeps the partial answer.
-                throw e
-            } catch (e: Exception) {
-                assistantMsg = assistantMsg.copy(
-                    content = "Error: ${e.message}",
-                    isLoading = false
-                )
-                updateMessageInState(assistantMsg)
-                _state.value = _state.value.copy(isStreaming = false, assistantActivity = null)
-                // The server persists chat turns only when the stream completes; enqueue the
-                // question so it still reaches the server when the model call failed.
-                messages.lastOrNull { it.type == ChatItemType.Question }?.let { question ->
-                    serverSync.syncMessage(
-                        id = question.id,
-                        conversationId = question.conversationId,
-                        role = "user",
-                        content = question.content,
-                        contentType = question.contentType.name
-                    )
-                }
-            }
-        }
-    }
-
-    private data class StreamResult(
-        val toolCalls: List<ai.fatai.feature.tools.ProviderToolCall>,
-        val persisted: Boolean
-    )
-
-    private suspend fun collectModelResponse(
-        prompt: List<ChatMessage>,
-        config: ProviderConfig,
-        context: ChatContext = ChatContext(),
-        includeTools: Boolean,
-        onContent: suspend (String) -> Unit,
-        onReasoning: suspend (String) -> Unit = {},
-        onToolCalls: (List<ai.fatai.feature.tools.ProviderToolCall>) -> Unit = {}
-    ): StreamResult {
-        var toolCalls = emptyList<ai.fatai.feature.tools.ProviderToolCall>()
-        var persisted = true
-        var lastRenderedAt = 0L
-        modelGateway.stream(
-            messages = prompt,
-            config = config,
-            tools = if (includeTools) toolRegistry.definitions() else emptyList(),
-            context = context
-        ).collect { chunk ->
-            if (shouldStopStream) return@collect
-            if (chunk.reasoningContent.isNotEmpty()) {
-                lastRenderedAt = awaitNextStreamFrame(lastRenderedAt)
-                onReasoning(chunk.reasoningContent)
-            }
-            if (chunk.content.isNotEmpty()) {
-                // A fast provider (or a buffered transport) can make several chunks available
-                // in one main-thread turn. StateFlow keeps the latest value in that case, so
-                // Compose gets no opportunity to draw the intermediate text. Limit commits to
-                // the display frame rate and yield between them.
-                lastRenderedAt = awaitNextStreamFrame(lastRenderedAt)
-                onContent(chunk.content)
-            }
-            if (chunk.toolCalls.isNotEmpty()) {
-                toolCalls = toolCalls + chunk.toolCalls
-                onToolCalls(toolCalls)
-            }
-            if (chunk.isDone) {
-                toolCalls = chunk.toolCalls
-                persisted = chunk.persisted
-            }
-        }
-        return StreamResult(toolCalls, persisted)
-    }
-
-    @OptIn(kotlin.time.ExperimentalTime::class)
-    private suspend fun awaitNextStreamFrame(lastRenderedAt: Long): Long {
-        if (lastRenderedAt != 0L) {
-            val elapsed = Clock.System.now().toEpochMilliseconds() - lastRenderedAt
-            val remaining = STREAM_RENDER_INTERVAL_MILLIS - elapsed
-            if (remaining > 0) delay(remaining)
-        }
-        return Clock.System.now().toEpochMilliseconds()
-    }
-
-    private fun formatToolResult(execution: ai.fatai.feature.tools.ToolExecution): String = buildString {
-        appendLine("Tool: ${execution.call.toolName}")
-        when (val result = execution.result) {
-            is ToolResult.Success -> appendLine(result.content)
-            is ToolResult.Failure -> appendLine("Tool failed (${result.code}): ${result.message}")
-        }
-    }.trimEnd()
-
-    private fun List<ai.fatai.feature.tools.ProviderToolCall>.activity(): AssistantActivity = when {
-        any { it.name == "weather" } -> AssistantActivity.CheckingWeather
-        any { it.name == "web_search" } -> AssistantActivity.Searching
-        else -> AssistantActivity.UsingTool
-    }
-
-    private fun ChatItem.withToolSources(executions: List<ai.fatai.feature.tools.ToolExecution>): ChatItem {
-        val sources = executions
-            .flatMap { execution -> (execution.result as? ToolResult.Success)?.sources.orEmpty() }
-            .distinctBy { source -> source.url ?: source.label }
-            .map { source -> MessageSource(label = source.label, url = source.url) }
-        if (sources.isEmpty()) return this
-        return copy(sources = sources)
-    }
-
-    private fun completeAssistantResponse(
-        conversationId: String,
-        messages: List<ChatItem>,
-        assistantMsg: ChatItem,
-        config: ProviderConfig
-    ) {
-        // The server persisted this turn during the stream; only the local cache is written here.
-        chatRepository.insertMessage(
-            conversationId,
-            assistantMsg.content,
-            ChatItemType.Answer,
-            id = assistantMsg.id,
-            sync = false,
-            sources = assistantMsg.sources
-        )
-        // The server generates a model-based title for new conversations and syncs it
-        // back through the change stream; nothing to update locally here.
-        _state.value = _state.value.copy(isStreaming = false, assistantActivity = null)
-        loadConversations()
-        screenModelScope.launch {
-            conversationMemoryService.summarizeIfNeeded(
-                workspaceId = chatRepository.getConversationById(conversationId)?.workspaceId ?: INBOX_WORKSPACE_ID,
-                conversationId = conversationId,
-                messages = (messages + assistantMsg).map {
-                    ChatMessage(
-                        role = if (it.type == ChatItemType.Question) "user" else "assistant",
-                        content = it.content
-                    )
-                },
-                config = config
-            )
-        }
-    }
-
     fun stopGeneration() {
-        shouldStopStream = true
-        streamJob?.cancel()
+        streamControl.stopRequested = true
+        streamControl.job?.cancel()
         val messages = _state.value.messages.map {
             if (it.isLoading) it.copy(isLoading = false) else it
         }
@@ -754,6 +419,7 @@ class AIChatViewModel(
         )
     }
 
+    @OptIn(ExperimentalUuidApi::class)
     fun continueGeneration() {
         val config = _state.value.activeConfig ?: return
         val messages = _state.value.messages
@@ -761,83 +427,21 @@ class AIChatViewModel(
             val lastAssistant = _state.value.messages.lastOrNull { it.type == ChatItemType.Answer }
             if (lastAssistant != null) {
                 val convId = _state.value.currentConversationId ?: return
-                @OptIn(ExperimentalUuidApi::class, kotlin.time.ExperimentalTime::class)
-                var assistantMsg = ChatItem(
-                    id = Uuid.random().toString(),
-                    userId = currentUser.currentUserId,
-                    conversationId = convId,
-                    content = "",
-                    type = ChatItemType.Answer,
-                    contentType = MessageContentType.Markdown,
-                    createdAt = Clock.System.now().toEpochMilliseconds(),
-                    isLoading = true
+                val history = _state.value.messages
+                    .filter { !it.isLoading && !it.content.startsWith("Error:") }
+                    .map {
+                        ChatMessage(role = if (it.type == ChatItemType.Question) "user" else "assistant", content = it.content)
+                    } + ChatMessage(role = "user", content = "Please continue from where you left off.")
+                chatStreamManager.stream(
+                    request = StreamRequest(
+                        conversationId = convId,
+                        assistantMessageId = Uuid.random().toString(),
+                        history = history,
+                        config = config,
+                        includeTools = false
+                    ),
+                    control = streamControl
                 )
-                _state.value = _state.value.copy(
-                    messages = _state.value.messages + assistantMsg,
-                    isStreaming = true,
-                    assistantActivity = AssistantActivity.Thinking
-                )
-
-                shouldStopStream = false
-                streamJob = screenModelScope.launch {
-                    try {
-                        var streamCompleted = false
-                        var lastRenderedAt = 0L
-                        val history = _state.value.messages
-                            .filter { !it.isLoading && !it.content.startsWith("Error:") }
-                            .map {
-                            ChatMessage(role = if (it.type == ChatItemType.Question) "user" else "assistant", content = it.content)
-                        } + ChatMessage(role = "user", content = "Please continue from where you left off.")
-
-                val context = ChatContext(
-                    workspaceId = _state.value.currentWorkspaceId,
-                    conversationId = convId,
-                    responseLanguageTag = currentLanguageTag(),
-                    assistantMessageId = assistantMsg.id
-                )
-                        modelGateway.stream(history, config, context = context).collect { chunk ->
-                            if (shouldStopStream || streamCompleted) return@collect
-                            if (chunk.reasoningContent.isNotEmpty()) {
-                                lastRenderedAt = awaitNextStreamFrame(lastRenderedAt)
-                                assistantMsg = assistantMsg.copy(
-                                    reasoningContent = assistantMsg.reasoningContent + chunk.reasoningContent,
-                                    isLoading = false
-                                )
-                                updateMessageInState(assistantMsg)
-                            }
-                            if (chunk.content.isNotEmpty()) {
-                                lastRenderedAt = awaitNextStreamFrame(lastRenderedAt)
-                                assistantMsg = assistantMsg.copy(
-                                    content = assistantMsg.content + chunk.content,
-                                    isLoading = false
-                                )
-                                updateMessageInState(assistantMsg)
-                            }
-                            if (chunk.isDone) {
-                                streamCompleted = true
-                                // The server persisted this answer during the stream.
-                                chatRepository.insertMessage(
-                                    convId,
-                                    assistantMsg.content,
-                                    ChatItemType.Answer,
-                                    id = assistantMsg.id,
-                                    sync = false
-                                )
-                                _state.value = _state.value.copy(isStreaming = false, assistantActivity = null)
-                                loadConversations()
-                            }
-                        }
-                    } catch (e: CancellationException) {
-                        throw e
-                    } catch (e: Exception) {
-                        assistantMsg = assistantMsg.copy(
-                            content = "Error: ${e.message}",
-                            isLoading = false
-                        )
-                        updateMessageInState(assistantMsg)
-                        _state.value = _state.value.copy(isStreaming = false, assistantActivity = null)
-                    }
-                }
             }
         }
     }
@@ -880,15 +484,44 @@ class AIChatViewModel(
         loadConversations()
     }
 
+    @OptIn(ExperimentalUuidApi::class)
+    private fun streamChat(
+        conversationId: String,
+        messages: List<ChatItem>,
+        attachments: List<FileAsset> = emptyList(),
+        replaceMessageId: String? = null
+    ) {
+        val config = _state.value.activeConfig ?: return
+        val history = messages
+            .filter { !it.isLoading && !it.content.startsWith("Error:") }
+            .map {
+                ChatMessage(role = if (it.type == ChatItemType.Question) "user" else "assistant", content = it.content)
+            }
+        val isAttachmentAnalysis = attachments.isNotEmpty()
+        chatStreamManager.stream(
+            request = StreamRequest(
+                conversationId = conversationId,
+                assistantMessageId = Uuid.random().toString(),
+                history = if (isAttachmentAnalysis) history.takeLast(1) else history,
+                config = config,
+                includeTools = true,
+                attachments = attachments,
+                includeContextualReferences = !isAttachmentAnalysis,
+                userMessageId = messages.lastOrNull { it.type == ChatItemType.Question }?.id,
+                outboxMessages = messages,
+                fallbackQuestion = messages.lastOrNull { it.type == ChatItemType.Question },
+                summarizeConversation = messages,
+                replaceMessageId = replaceMessageId
+            ),
+            control = streamControl
+        )
+    }
+
     private fun updateMessageInState(updatedMsg: ChatItem) {
         _state.value = _state.value.copy(
             messages = _state.value.messages.map {
                 if (it.id == updatedMsg.id) updatedMsg else it
             }
         )
-    }
-
-    private companion object {
-        const val STREAM_RENDER_INTERVAL_MILLIS = 16L
     }
 }
