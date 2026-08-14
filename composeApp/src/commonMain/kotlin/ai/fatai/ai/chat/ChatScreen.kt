@@ -2,6 +2,7 @@ package ai.fatai.ai.chat
 
 import ai.fatai.ai.openDownloadedAttachment
 import ai.fatai.feature.files.FileAsset
+import ai.fatai.feature.files.FileAssetService
 import ai.fatai.feature.user.User
 import ai.fatai.feature.user.UserRepository
 import ai.fatai.repo.ApiKeyRepository
@@ -56,6 +57,10 @@ import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import coil3.compose.LocalPlatformContext
+import coil3.request.ImageRequest
+import coil3.network.NetworkHeaders
+import coil3.network.httpHeaders
 import compose.icons.FeatherIcons
 import compose.icons.feathericons.Menu
 import compose.icons.feathericons.Plus
@@ -102,6 +107,21 @@ internal fun ChatScreen(onSettings: () -> Unit) {
         scope.launch { drawerState.close() }
     }
     val snackbarHostState = remember { SnackbarHostState() }
+    // Server-backed attachment images load straight from `GET /v1/files/{file_id}` with the
+    // Bearer header; Coil caches the result (memory + disk), so items that a LazyColumn
+    // disposed on scroll are restored from the cache instead of re-downloading the bytes.
+    val fileAssetService = koinInject<FileAssetService>()
+    val platformContext = LocalPlatformContext.current
+    val attachmentImageRequest: suspend (FileAsset) -> ImageRequest = { asset ->
+        ImageRequest.Builder(platformContext)
+            .data("${fileAssetService.serverBaseUrl}/v1/files/${asset.id}")
+            .httpHeaders(
+                NetworkHeaders.Builder()
+                    .add("Authorization", "Bearer ${fileAssetService.accessTokenProvider()}")
+                    .build()
+            )
+            .build()
+    }
     val attachFileTitle = stringResource(Res.string.attach_file)
     val analyzeAttachedFilePrompt = stringResource(Res.string.analyze_attached_file)
     val filePicker = rememberFilePickerLauncher(
@@ -187,7 +207,7 @@ internal fun ChatScreen(onSettings: () -> Unit) {
                     onAttach = { filePicker.launch() },
                     sendPrompt = analyzeAttachedFilePrompt,
                     onDownloadAttachment = viewModel::downloadAttachment,
-                    onLoadAttachmentBytes = viewModel::loadAttachmentBytes
+                    onImageRequest = attachmentImageRequest
                 )
             }
         } else {
@@ -219,7 +239,7 @@ internal fun ChatScreen(onSettings: () -> Unit) {
                         onAttach = { filePicker.launch() },
                         sendPrompt = analyzeAttachedFilePrompt,
                         onDownloadAttachment = viewModel::downloadAttachment,
-                        onLoadAttachmentBytes = viewModel::loadAttachmentBytes
+                        onImageRequest = attachmentImageRequest
                     )
                 }
             }
@@ -287,7 +307,7 @@ internal fun ChatWorkspace(
     onAttach: () -> Unit,
     sendPrompt: String,
     onDownloadAttachment: (FileAsset) -> Unit,
-    onLoadAttachmentBytes: suspend (FileAsset) -> ByteArray?
+    onImageRequest: suspend (FileAsset) -> ImageRequest
 ) {
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
@@ -381,7 +401,7 @@ internal fun ChatWorkspace(
                     onScrollPositionChange = viewModel::updateChatScrollPosition,
                     onRegenerate = viewModel::regenerate,
                     onDownloadAttachment = onDownloadAttachment,
-                    onLoadAttachmentBytes = onLoadAttachmentBytes,
+                    onImageRequest = onImageRequest,
                     modifier = Modifier.weight(1f)
                 )
                 HorizontalDivider()

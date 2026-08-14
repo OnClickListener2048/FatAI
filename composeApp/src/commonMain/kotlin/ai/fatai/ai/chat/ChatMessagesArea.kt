@@ -37,6 +37,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
+import coil3.request.ImageRequest
 import compose.icons.FeatherIcons
 import compose.icons.feathericons.ChevronDown
 import fatai.composeapp.generated.resources.Res
@@ -58,7 +59,7 @@ internal fun ChatMessagesArea(
     onScrollPositionChange: (String, Int, Int) -> Unit,
     onRegenerate: () -> Unit,
     onDownloadAttachment: (FileAsset) -> Unit,
-    onLoadAttachmentBytes: suspend (FileAsset) -> ByteArray?,
+    onImageRequest: suspend (FileAsset) -> ImageRequest,
     modifier: Modifier = Modifier
 ) {
     val conversationId = messages.firstOrNull()?.conversationId
@@ -126,7 +127,7 @@ internal fun ChatMessagesArea(
                         msg.id == messages.lastOrNull()?.id,
                     onRegenerate = onRegenerate,
                     onDownloadAttachment = onDownloadAttachment,
-                    onLoadAttachmentBytes = onLoadAttachmentBytes
+                    onImageRequest = onImageRequest
                 )
             }
             item { Spacer(Modifier.height(4.dp)) }

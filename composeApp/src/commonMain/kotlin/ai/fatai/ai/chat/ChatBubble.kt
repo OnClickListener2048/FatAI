@@ -38,6 +38,7 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import coil3.request.ImageRequest
 import compose.icons.FeatherIcons
 import compose.icons.feathericons.Copy
 import compose.icons.feathericons.RefreshCw
@@ -57,7 +58,7 @@ internal fun ChatBubble(
     showRegenerate: Boolean,
     onRegenerate: () -> Unit,
     onDownloadAttachment: (FileAsset) -> Unit,
-    onLoadAttachmentBytes: suspend (FileAsset) -> ByteArray?
+    onImageRequest: suspend (FileAsset) -> ImageRequest
 ) {
     val clipboardManager = LocalClipboardManager.current
     val isQuestion = msg.type == ChatItemType.Question
@@ -147,7 +148,7 @@ internal fun ChatBubble(
                         MessageAttachments(
                             attachments,
                             onDownload = onDownloadAttachment,
-                            onLoadBytes = onLoadAttachmentBytes
+                            onImageRequest = onImageRequest
                         )
                     }
                     if (!isQuestion && msg.content.isNotBlank() && !msg.isLoading) {

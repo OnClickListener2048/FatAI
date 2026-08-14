@@ -31,6 +31,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
+import coil3.request.ImageRequest
 import compose.icons.FeatherIcons
 import compose.icons.feathericons.Download
 import compose.icons.feathericons.Paperclip
@@ -45,7 +46,7 @@ import org.jetbrains.compose.resources.stringResource
 internal fun MessageAttachments(
     attachments: List<FileAsset>,
     onDownload: (FileAsset) -> Unit,
-    onLoadBytes: suspend (FileAsset) -> ByteArray?
+    onImageRequest: suspend (FileAsset) -> ImageRequest
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         attachments.forEach { asset ->
@@ -70,7 +71,7 @@ internal fun MessageAttachments(
                         // picker URI loses its permission grant after an app restart.
                         ServerAttachmentImage(
                             asset = asset,
-                            loadBytes = onLoadBytes,
+                            onImageRequest = onImageRequest,
                             contentDescription = asset.displayName,
                             modifier = imageModifier
                         )
