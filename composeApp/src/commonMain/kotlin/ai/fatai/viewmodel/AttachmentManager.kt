@@ -2,6 +2,7 @@ package ai.fatai.viewmodel
 
 import ai.fatai.feature.files.FileAssetRepository
 import ai.fatai.feature.files.FileAssetService
+import ai.fatai.feature.model.FatAiServerSync
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import kotlin.uuid.ExperimentalUuidApi
@@ -15,6 +16,7 @@ import kotlin.uuid.Uuid
 class AttachmentManager(
     private val fileAssetService: FileAssetService,
     private val fileAssetRepository: FileAssetRepository,
+    private val serverSync: FatAiServerSync,
     private val scope: CoroutineScope,
     private val getState: () -> ChatScreenState,
     private val onState: (ChatScreenState) -> Unit,
@@ -49,7 +51,7 @@ class AttachmentManager(
         )
         scope.launch {
             var lastShownPercent = -1
-            val assetId = try {
+            val uploaded = try {
                 fileAssetService.upload(
                     fileName = displayName,
                     mimeType = mimeType,
@@ -70,11 +72,12 @@ class AttachmentManager(
                             )
                         }
                     }
-                ).id
+                )
             } catch (_: Exception) {
                 onToast("File upload failed, using the local path instead.")
-                LOCAL_ATTACHMENT_PREFIX + Uuid.random().toString()
+                null
             }
+            val assetId = uploaded?.id ?: (LOCAL_ATTACHMENT_PREFIX + Uuid.random().toString())
             fileAssetRepository.attach(
                 displayName = displayName,
                 mimeType = mimeType,
@@ -82,8 +85,23 @@ class AttachmentManager(
                 sizeBytes = sizeBytes,
                 workspaceId = getState().currentWorkspaceId,
                 conversationId = conversationId,
-                id = assetId
+                id = assetId,
+                url = uploaded?.url ?: ""
             )
+            if (uploaded != null) {
+                // Mirror the metadata so other devices can fetch the bytes through the
+                // server URL; older servers omit it and the client derives it instead.
+                serverSync.syncFileAsset(
+                    id = assetId,
+                    workspaceId = getState().currentWorkspaceId,
+                    conversationId = conversationId,
+                    messageId = null,
+                    displayName = displayName,
+                    mimeType = mimeType,
+                    sizeBytes = sizeBytes,
+                    url = uploaded.url.ifBlank { "${fileAssetService.serverBaseUrl}/v1/files/$assetId" }
+                )
+            }
             onState(
                 getState().copy(
                     attachments = fileAssetRepository.pendingForConversation(conversationId),
@@ -95,6 +113,8 @@ class AttachmentManager(
 
     fun removeAttachment(id: String) {
         fileAssetRepository.delete(id)
+        // Local-only fallback attachments never reached the server, nothing to delete there.
+        if (!id.startsWith(LOCAL_ATTACHMENT_PREFIX)) serverSync.deleteFileAsset(id)
         val conversationId = getState().currentConversationId ?: return
         onState(getState().copy(attachments = fileAssetRepository.pendingForConversation(conversationId)))
     }

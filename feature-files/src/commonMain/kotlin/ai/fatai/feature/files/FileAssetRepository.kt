@@ -16,6 +16,7 @@ data class FileAsset(
     val mimeType: String,
     val localPath: String,
     val sizeBytes: Long,
+    val url: String = "",
     val createdAt: Long
 )
 
@@ -38,15 +39,16 @@ class FileAssetRepository(private val queries: WatsonQueries, private val curren
         workspaceId: String?,
         conversationId: String?,
         messageId: String? = null,
-        id: String = Uuid.random().toString()
+        id: String = Uuid.random().toString(),
+        url: String = ""
     ): FileAsset {
         val asset = FileAsset(
             id, currentUser.currentUserId, workspaceId, conversationId, messageId,
-            displayName, mimeType, localPath, sizeBytes, now()
+            displayName, mimeType, localPath, sizeBytes, url, now()
         )
         queries.insertFileAsset(
             asset.id, asset.userId, asset.workspaceId, asset.conversationId, asset.messageId,
-            asset.displayName, asset.mimeType, asset.localPath, asset.sizeBytes, asset.createdAt
+            asset.displayName, asset.mimeType, asset.localPath, asset.sizeBytes, asset.url, asset.createdAt
         )
         return asset
     }
@@ -68,5 +70,6 @@ private fun ai.fatai.database.sqldelight.FileAsset.toFileAsset() = FileAsset(
     mimeType = mimeType,
     localPath = localPath,
     sizeBytes = sizeBytes,
+    url = url,
     createdAt = createdAt
 )

@@ -130,6 +130,32 @@ class FatAiServerSync(
 
     override fun deleteMessage(id: String) = enqueue("message", id, "DELETE", "{}")
 
+    /**
+     * Pushes attachment metadata so other devices can render/download the file through its
+     * server URL. The bytes themselves were already uploaded (or are referenced by [url]
+     * when an older server omitted it); [messageId] is null while the file sits in the
+     * input bar and set once the message is sent — the outbox coalesces both into one op.
+     */
+    fun syncFileAsset(
+        id: String,
+        workspaceId: String?,
+        conversationId: String?,
+        messageId: String?,
+        displayName: String,
+        mimeType: String,
+        sizeBytes: Long,
+        url: String
+    ) {
+        enqueue(
+            "file_asset",
+            id,
+            "UPSERT",
+            json.encodeToString(FileAssetPayload(id, workspaceId, conversationId, messageId, displayName, mimeType, sizeBytes, url))
+        )
+    }
+
+    fun deleteFileAsset(id: String) = enqueue("file_asset", id, "DELETE", "{}")
+
     fun syncModelConfiguration(config: ProviderConfig, isActive: Boolean = true) {
         val configurationId = requireNotNull(config.configurationId) { "A local model configuration is required." }
         // Reuse an in-flight upload's deferred so a second save never leaves the first caller
@@ -389,6 +415,18 @@ private data class ModelConfigurationPayload(
     @SerialName("base_url") val baseUrl: String,
     val model: String,
     @SerialName("is_active") val isActive: Boolean
+)
+
+@Serializable
+private data class FileAssetPayload(
+    val id: String,
+    @SerialName("workspace_id") val workspaceId: String?,
+    @SerialName("conversation_id") val conversationId: String?,
+    @SerialName("message_id") val messageId: String?,
+    @SerialName("display_name") val displayName: String,
+    @SerialName("mime_type") val mimeType: String,
+    @SerialName("size_bytes") val sizeBytes: Long,
+    val url: String
 )
 
 @Serializable

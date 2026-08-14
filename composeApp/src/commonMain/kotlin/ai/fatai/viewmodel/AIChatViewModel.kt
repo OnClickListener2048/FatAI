@@ -95,6 +95,7 @@ class AIChatViewModel(
     private val attachmentManager = AttachmentManager(
         fileAssetService = fileAssetService,
         fileAssetRepository = fileAssetRepository,
+        serverSync = serverSync,
         scope = screenModelScope,
         getState = { _state.value },
         onState = { _state.value = it },
@@ -377,6 +378,21 @@ class AIChatViewModel(
             userMemoryExtractionService.rememberFromUserInput(userMsg.content, config)
         }
         fileAssetRepository.assignPendingToMessage(conversationId, userMsg.id)
+        // Re-push attachment metadata now that the message id is known; the outbox coalesces
+        // this with the attach-time op, so only the message-linked version is sent. Local-only
+        // fallback attachments (upload failed) never reach the server.
+        pendingAttachments.filter { !it.id.startsWith(LOCAL_ATTACHMENT_PREFIX) }.forEach { asset ->
+            serverSync.syncFileAsset(
+                id = asset.id,
+                workspaceId = asset.workspaceId,
+                conversationId = asset.conversationId,
+                messageId = userMsg.id,
+                displayName = asset.displayName,
+                mimeType = asset.mimeType,
+                sizeBytes = asset.sizeBytes,
+                url = asset.url.ifBlank { "${fileAssetService.serverBaseUrl}/v1/files/${asset.id}" }
+            )
+        }
         val messages = _state.value.messages + userMsg
         _state.value = _state.value.copy(
             currentConversationId = conversationId,

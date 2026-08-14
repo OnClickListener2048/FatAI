@@ -140,6 +140,25 @@ class SyncRemoteStore(
                     )
                 }
             }
+            // Attachments synced from other devices carry the server URL but no local path;
+            // downloads and Coil rendering both go through the file id.
+            "file_asset" -> if (change.operation == "DELETE") {
+                queries.deleteFileAsset(change.entityId, currentUser.currentUserId)
+            } else {
+                queries.upsertRemoteFileAsset(
+                    id = change.entityId,
+                    userId = currentUser.currentUserId,
+                    workspaceId = payload.stringOrNull("workspace_id"),
+                    conversationId = payload.stringOrNull("conversation_id"),
+                    messageId = payload.stringOrNull("message_id"),
+                    displayName = payload.string("display_name"),
+                    mimeType = payload.string("mime_type"),
+                    localPath = "",
+                    sizeBytes = payload.long("size_bytes"),
+                    url = payload.string("url"),
+                    createdAt = now
+                )
+            }
             "setting" -> if (change.operation == "DELETE") {
                 queries.deleteRemoteSetting(currentUser.currentUserId, change.entityId)
             } else {

@@ -106,14 +106,16 @@ internal fun ChatScreen(onSettings: () -> Unit) {
         scope.launch { drawerState.close() }
     }
     val snackbarHostState = remember { SnackbarHostState() }
-    // Server-backed attachment images load straight from `GET /v1/files/{file_id}` with the
-    // Bearer header; Coil caches the result (memory + disk), so items that a LazyColumn
-    // disposed on scroll are restored from the cache instead of re-downloading the bytes.
+    // Server-backed attachment images load straight from the attachment URL with the Bearer
+    // header; Coil caches the result (memory + disk), so items that a LazyColumn disposed on
+    // scroll are restored from the cache instead of re-downloading the bytes. Rows synced
+    // from other devices carry the server-stored URL; locally attached rows fall back to the
+    // derived `GET /v1/files/{file_id}` URL for servers that predate the url column.
     val fileAssetService = koinInject<FileAssetService>()
     val platformContext = LocalPlatformContext.current
     val attachmentImageRequest: suspend (FileAsset) -> ImageRequest = { asset ->
         ImageRequest.Builder(platformContext)
-            .data("${fileAssetService.serverBaseUrl}/v1/files/${asset.id}")
+            .data(asset.url.ifBlank { "${fileAssetService.serverBaseUrl}/v1/files/${asset.id}" })
             .httpHeaders(
                 NetworkHeaders.Builder()
                     .add("Authorization", "Bearer ${fileAssetService.accessTokenProvider()}")

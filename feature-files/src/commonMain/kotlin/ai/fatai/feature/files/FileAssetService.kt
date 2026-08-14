@@ -109,7 +109,12 @@ class FileAssetService(
 @Serializable
 data class UploadedFile(
     val id: String,
-    @SerialName("display_name") val displayName: String = ""
+    @SerialName("display_name") val displayName: String = "",
+    /**
+     * Absolute URL the server stores for the attachment (`{base}/v1/files/{id}`); empty on
+     * servers that predate the url column, in which case the client derives it.
+     */
+    @SerialName("url") val url: String = ""
 )
 
 class FileUploadException(val httpStatus: Int, message: String) : RuntimeException(message)

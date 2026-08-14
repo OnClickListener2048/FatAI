@@ -94,6 +94,7 @@ CREATE TABLE FileAsset (
     mimeType TEXT NOT NULL,
     localPath TEXT NOT NULL,
     sizeBytes INTEGER NOT NULL DEFAULT 0,
+    url TEXT NOT NULL DEFAULT '',
     createdAt INTEGER NOT NULL
 );
 
@@ -305,8 +306,14 @@ WHERE conversationId = :conversationId AND userId = :userId AND messageId IS NUL
 ORDER BY createdAt ASC;
 
 insertFileAsset:
-INSERT INTO FileAsset(id, userId, workspaceId, conversationId, messageId, displayName, mimeType, localPath, sizeBytes, createdAt)
-VALUES (:id, :userId, :workspaceId, :conversationId, :messageId, :displayName, :mimeType, :localPath, :sizeBytes, :createdAt);
+INSERT INTO FileAsset(id, userId, workspaceId, conversationId, messageId, displayName, mimeType, localPath, sizeBytes, url, createdAt)
+VALUES (:id, :userId, :workspaceId, :conversationId, :messageId, :displayName, :mimeType, :localPath, :sizeBytes, :url, :createdAt);
+
+-- Server rows arriving via sync have no local path (downloads go through the file id);
+-- INSERT OR REPLACE keeps the attachment local on the device that uploaded it.
+upsertRemoteFileAsset:
+INSERT OR REPLACE INTO FileAsset(id, userId, workspaceId, conversationId, messageId, displayName, mimeType, localPath, sizeBytes, url, createdAt)
+VALUES (:id, :userId, :workspaceId, :conversationId, :messageId, :displayName, :mimeType, :localPath, :sizeBytes, :url, :createdAt);
 
 assignPendingFilesToMessage:
 UPDATE FileAsset SET messageId = :messageId

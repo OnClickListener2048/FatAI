@@ -103,7 +103,7 @@ The `ChatProvider` interface in `feature-model` is the extension point for new p
 
 ### Database
 
-Single SQLDelight schema file `Watson.sq` at `database/src/commonMain/sqldelight/ai/fatai/database/sqldelight/Watson.sq` (v11). Migrations in `migrations/2.sqm` through `10.sqm` — no `1.sqm`, the base `.sq` is v1. Every table is user-scoped via `userId`. Three `ColumnAdapter`s encode/decode `ChatItemType`, `MessageContentType`, and `ProviderType` as their `name` strings.
+Single SQLDelight schema file `Watson.sq` at `database/src/commonMain/sqldelight/ai/fatai/database/sqldelight/Watson.sq` (v12). Migrations in `migrations/2.sqm` through `11.sqm` — no `1.sqm`, the base `.sq` is v1. Every table is user-scoped via `userId`. Three `ColumnAdapter`s encode/decode `ChatItemType`, `MessageContentType`, and `ProviderType` as their `name` strings.
 
 The JVM driver (`database/src/jvmMain`) has an elaborate legacy-migration path: copies `~/.ai-assistant/app.db` on first launch, infers schema version from probed columns when `PRAGMA user_version` is 0, then runs `Schema.migrate`. Be careful when adding migrations — the inference logic may skip them for DBs that already have `SyncOutbox`.
 

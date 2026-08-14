@@ -29,7 +29,7 @@
 
 | 方法与路径 | 用途 | 请求参数 | 响应与客户端处理 |
 | --- | --- | --- | --- |
-| `POST /v1/files` | multipart 上传用户选择的文件。成功返回的 `id` 会作为本地 `FileAsset.id`（见数据库节）。上传失败时 `attachFile` 改为使用 `local-` 前缀的本地 id，并在发送时回退到 `docling_document_read` 的 `local_path` 模式。 | `file`：multipart 文件部分（`filename`、`Content-Type`）；查询参数 `workspace_id?`、`conversation_id?`。 | `{ id, display_name, storage_path, ... }`，`ignoreUnknownKeys` 解析 `id` 与 `display_name`；非 2xx 抛 `FileUploadException`。 |
+| `POST /v1/files` | multipart 上传用户选择的文件。成功返回的 `id` 会作为本地 `FileAsset.id`（见数据库节），返回的 `url` 会作为 `FileAsset.url`（老服务端可能缺失该字段，客户端按 `{服务地址}/v1/files/{id}` 派生）。上传失败时 `attachFile` 改为使用 `local-` 前缀的本地 id，并在发送时回退到 `docling_document_read` 的 `local_path` 模式。 | `file`：multipart 文件部分（`filename`、`Content-Type`）；查询参数 `workspace_id?`、`conversation_id?`。 | `{ id, display_name, storage_path, url, ... }`，`ignoreUnknownKeys` 解析 `id`、`display_name` 与 `url`；非 2xx 抛 `FileUploadException`。 |
 | `POST /v1/files/{file_id}/read` | 按 `file_id` 读取已上传文件并转 Markdown（服务端自行读存储，需鉴权）。由 `DoclingDocumentTool` 的 `file_id` 模式调用。 | 无请求体；路径参数 `file_id`。 | `{ displayName, markdown }`；错误 `{ code, message }`。 |
 | `GET /v1/files/{file_id}` | 按 `file_id` 下载已上传文件的原始字节（附件下载功能）。三端统一：客户端先经 `FileAssetService.download` 拉取字节，再通过 FileKit 弹系统保存对话框（Android SAF / JVM 文件对话框 / iOS 文档选择器）。`local-` 前缀的本地附件未上传服务端，下载时直接复制 `localPath` 文件。图片附件渲染也走该接口（Coil 带 Bearer 头直载，利用内存/磁盘缓存）。 | 无请求体；路径参数 `file_id`，需 Bearer 令牌。 | 原始文件字节（`Content-Type` 为上传时的 MIME）；非 2xx 抛异常。 |
 
@@ -56,7 +56,9 @@
 | `GET /v1/sync/snapshot` | 本地 cursor 为 `0` 且无待上传任务时，重建完整本地缓存。 | Bearer 令牌；返回 `entities` 和当前 `cursor`。 |
 | `GET /v1/sync/changes?cursor=&limit=` | 按 cursor 拉取其他设备或服务端产生的增量变更。 | `cursor`、`limit`；客户端按返回顺序落库后再更新 cursor。 |
 
-服务端 REST 写接口（workspaces、conversations、messages、memories、prompt-templates、model-configurations、settings）也会以服务端自增 sequence 写入同一条变更流，因此通过 REST 或服务端生成产生的数据同样能被增量拉取到所有设备。客户端收到的 `401` 会作废缓存令牌并重新获取；启动时 outbox 中 `FAILED` 任务会转为 `RETRYING` 重试一次。同步协议中 `DELETE` 操作由服务端无条件应用（删即为胜），避免聊天直存的服务端 sequence 导致客户端删除被误拒。
+服务端 REST 写接口（workspaces、conversations、messages、memories、prompt-templates、model-configurations、settings、files）也会以服务端自增 sequence 写入同一条变更流，因此通过 REST 或服务端生成产生的数据同样能被增量拉取到所有设备。客户端收到的 `401` 会作废缓存令牌并重新获取；启动时 outbox 中 `FAILED` 任务会转为 `RETRYING` 重试一次。同步协议中 `DELETE` 操作由服务端无条件应用（删即为胜），避免聊天直存的服务端 sequence 导致客户端删除被误拒。
+
+**附件（`file_asset`）也走同一变更流**：上传成功或删除时，`AttachmentManager` 通过 outbox 以 `entity_type="file_asset"` 入队 `UPSERT`/`DELETE`；发送消息后 `AIChatViewModel` 重新入队一次以补充 `message_id`（outbox 按实体合并，只保留最新状态）。payload 为 `workspace_id?`、`conversation_id?`、`message_id?`、`display_name`、`mime_type`、`size_bytes`、`url`。其他设备拉取后本地仅存元数据与 `url`，图片经 Coil 直载渲染、文件经 `FileAssetService.download` 下载，`local-` 前缀的本地失败回退附件不参与同步。
 
 ### 本地工具服务接口
 
@@ -102,7 +104,7 @@
 | `Workspace` | 工作空间：`id`、`userId`、`name`、`systemPrompt`、创建/更新时间、`isArchived`。默认 Inbox ID 为 `inbox`。 |
 | `MemoryEntry` | 长短期记忆：`id`、`userId`、`scope`、`workspaceId?`、`conversationId?`、`kind`、`content`、时间、`isArchived`。 |
 | `PromptTemplate` | 提示词模板：`id`、`userId`、`name`、`content`、`workspaceId?`、`priority`、`isEnabled`、时间。 |
-| `FileAsset` | 已选附件的本地元数据：`id`、`userId`、`workspaceId?`、`conversationId?`、`messageId?`、文件名、MIME、`localPath`、`sizeBytes`、`createdAt`。文件内容不写入数据库。`id` 在附件上传成功后为服务端返回的资产 id（用于 `file_id` 读取）；上传失败时使用 `local-` 前缀的本地 UUID，发送时回退到 `local_path` 模式。 |
+| `FileAsset` | 已选附件的本地元数据：`id`、`userId`、`workspaceId?`、`conversationId?`、`messageId?`、文件名、MIME、`localPath`、`sizeBytes`、`url`、`createdAt`。文件内容不写入数据库。`id` 在附件上传成功后为服务端返回的资产 id（用于 `file_id` 读取）；上传失败时使用 `local-` 前缀的本地 UUID，发送时回退到 `local_path` 模式。`url` 为服务端保存的附件绝对地址（v12 起有该列；老库/老服务端为空，读取与渲染时按 `{服务地址}/v1/files/{id}` 派生），跨设备同步来的附件只靠它取回文件。 |
 | `AppSetting` | 按用户保存的键值设置：`userId` + `key` 为联合主键，另有 `value`、`updatedAt`。主题和 FatAI 设备 ID 使用此表。 |
 | `SyncSequence` | 每个实体的本地单调序号，避免乱序操作覆盖。 |
 | `SyncOutbox` | 持久化同步任务：状态包括 `PENDING`、`SENDING`、`RETRYING`、`FAILED`，并记录重试次数及错误分类；同一实体的未发送任务会合并为最新状态，避免队列膨胀。 |
@@ -180,8 +182,8 @@
 `upsertRemoteConversation`、`deleteRemoteConversation`、`upsertRemoteMessage`、
 `deleteRemoteMessage`、`upsertRemoteMemory`、`deleteRemoteMemory`、
 `upsertRemotePromptTemplate`、`deleteRemotePromptTemplate`、`upsertRemoteApiKey`、
-`deleteRemoteApiKey` 和 `upsertSyncSequence`。这些查询由 `SyncRemoteStore` 调用，不会触发
-本地业务 Repository 的再次同步。
+`deleteRemoteApiKey`、`upsertRemoteFileAsset`、`deleteFileAsset` 和 `upsertSyncSequence`。
+这些查询由 `SyncRemoteStore` 调用，不会触发本地业务 Repository 的再次同步。
 
 ### 数据库删除恢复验收
 
@@ -202,6 +204,7 @@ Android/iOS 使用各自平台 SQLite 沙盒路径，验收步骤相同：清除
 | --- | --- | --- | --- |
 | `selectFilesForConversation` | `FileAssetRepository.forConversation`。 | `conversationId`、`userId`。 | 按创建时间正序读取会话全部附件。 |
 | `selectPendingFilesForConversation` | `FileAssetRepository.pendingForConversation`。 | `conversationId`、`userId`。 | 读取尚未关联消息（`messageId IS NULL`）的待发送附件。 |
-| `insertFileAsset` | `FileAssetRepository.attach`。`attach` 新增 `id` 参数：默认生成 UUID；上传成功后传入服务端资产 id，失败时传入 `local-` 前缀 id。 | `id`、`userId`、`workspaceId?`、`conversationId?`、`messageId?`、`displayName`、`mimeType`、`localPath`、`sizeBytes`、`createdAt`。 | 保存本地附件元数据。 |
+| `insertFileAsset` | `FileAssetRepository.attach`。`attach` 新增 `id` 参数：默认生成 UUID；上传成功后传入服务端资产 id，失败时传入 `local-` 前缀 id。`url` 来自上传响应（为空则 `''`）。 | `id`、`userId`、`workspaceId?`、`conversationId?`、`messageId?`、`displayName`、`mimeType`、`localPath`、`sizeBytes`、`url`、`createdAt`。 | 保存本地附件元数据。 |
 | `assignPendingFilesToMessage` | `FileAssetRepository.assignPendingToMessage`，发送用户消息后调用。 | `messageId`、`conversationId`、`userId`。 | 将该会话所有待发送附件关联到新消息。 |
-| `deleteFileAsset` | `FileAssetRepository.delete`。 | `id`、`userId`。 | 删除附件元数据；不会删除 `localPath` 指向的物理文件。 |
+| `upsertRemoteFileAsset` | `SyncRemoteStore` 应用 `file_asset` 变更流（跨设备同步的附件）。 | `id`、`userId`、`workspaceId?`、`conversationId?`、`messageId?`、`displayName`、`mimeType`、`localPath=''`、`sizeBytes`、`url`、`createdAt`。 | `INSERT OR REPLACE` 写入同步来的附件元数据；`localPath` 固定为空，取回文件只走 `url`。 |
+| `deleteFileAsset` | `FileAssetRepository.delete`、`SyncRemoteStore` 的 `file_asset` DELETE。 | `id`、`userId`。 | 删除附件元数据；不会删除 `localPath` 指向的物理文件。 |
