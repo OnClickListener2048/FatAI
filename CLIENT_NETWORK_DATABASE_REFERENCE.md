@@ -31,7 +31,7 @@
 | --- | --- | --- | --- |
 | `POST /v1/files` | multipart 上传用户选择的文件。成功返回的 `id` 会作为本地 `FileAsset.id`（见数据库节）。上传失败时 `attachFile` 改为使用 `local-` 前缀的本地 id，并在发送时回退到 `docling_document_read` 的 `local_path` 模式。 | `file`：multipart 文件部分（`filename`、`Content-Type`）；查询参数 `workspace_id?`、`conversation_id?`。 | `{ id, display_name, storage_path, ... }`，`ignoreUnknownKeys` 解析 `id` 与 `display_name`；非 2xx 抛 `FileUploadException`。 |
 | `POST /v1/files/{file_id}/read` | 按 `file_id` 读取已上传文件并转 Markdown（服务端自行读存储，需鉴权）。由 `DoclingDocumentTool` 的 `file_id` 模式调用。 | 无请求体；路径参数 `file_id`。 | `{ displayName, markdown }`；错误 `{ code, message }`。 |
-| `GET /v1/files/{file_id}` | 按 `file_id` 下载已上传文件的原始字节（附件下载功能）。Android 由系统 DownloadManager 直接下载到公共 Downloads 目录（响应携带 `Content-Disposition: attachment`）；桌面/iOS 先经 `FileAssetService.download` 拉取字节，再弹系统保存对话框。`local-` 前缀的本地附件未上传服务端，下载时直接复制 `localPath` 文件。 | 无请求体；路径参数 `file_id`，需 Bearer 令牌。 | 原始文件字节（`Content-Type` 为上传时的 MIME）；非 2xx 抛异常。 |
+| `GET /v1/files/{file_id}` | 按 `file_id` 下载已上传文件的原始字节（附件下载功能）。三端统一：客户端先经 `FileAssetService.download` 拉取字节，再通过 FileKit 弹系统保存对话框（Android SAF / JVM 文件对话框 / iOS 文档选择器）。`local-` 前缀的本地附件未上传服务端，下载时直接复制 `localPath` 文件。图片附件渲染也走该接口（Coil 带 Bearer 头直载，利用内存/磁盘缓存）。 | 无请求体；路径参数 `file_id`，需 Bearer 令牌。 | 原始文件字节（`Content-Type` 为上传时的 MIME）；非 2xx 抛异常。 |
 
 ### FatAI 服务同步接口
 

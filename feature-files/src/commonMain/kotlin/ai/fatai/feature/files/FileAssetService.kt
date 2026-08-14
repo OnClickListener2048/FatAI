@@ -77,8 +77,8 @@ class FileAssetService(
     /**
      * Downloads the original bytes of an uploaded attachment (`GET /v1/files/{file_id}`).
      *
-     * Used by the desktop/iOS save-dialog paths; Android hands the URL to the system
-     * DownloadManager instead and never fetches the bytes in-app.
+     * Used by the attachment save flow (the UI opens the FileKit save dialog with the bytes)
+     * on all platforms, and as the Coil image source for attachment image previews.
      *
      * @param onProgress reports received bytes; `total` may be 0 when unknown.
      */

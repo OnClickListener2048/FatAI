@@ -10,9 +10,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import ai.fatai.ai.AttachmentDownloadResult
-import ai.fatai.ai.awaitAttachmentDownload
-import ai.fatai.ai.downloadAttachment as downloadAttachmentToDevice
+import ai.fatai.ai.isLocalOnly
 import ai.fatai.bean.ChatItemType
 import ai.fatai.bean.MessageContentType
 import ai.fatai.chat.ChatMessage
@@ -31,14 +29,17 @@ import ai.fatai.feature.user.CurrentUserProvider
 import ai.fatai.repo.ChatItem
 import ai.fatai.repo.ChatRepository
 import ai.fatai.repo.ApiKeyRepository
+import io.github.vinceglb.filekit.PlatformFile
+import io.github.vinceglb.filekit.readBytes
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
 
 /**
- * A system download that finished in the background; [fileName] is what landed in the public
- * Downloads directory (or the display name as fallback).
+ * The bytes of an attachment that the UI should save through the platform save dialog.
+ * Produced by [AIChatViewModel.downloadAttachment]; the UI opens the picker (FileKit) so
+ * every platform behaves the same.
  */
-data class DownloadCompleteEvent(val message: String, val fileName: String)
+class SaveAttachmentRequest(val displayName: String, val mimeType: String, val bytes: ByteArray)
 
 /**
  * State hub for the chat screen.
@@ -70,12 +71,9 @@ class AIChatViewModel(
     private val _toastEvents = MutableSharedFlow<String>()
     val toastEvents: SharedFlow<String> = _toastEvents.asSharedFlow()
 
-    /**
-     * Fires when a system-DownloadManager transfer finishes, so the UI can offer an in-app
-     * "open" action instead of leaving the user to discover the notification on their own.
-     */
-    private val _downloadCompleteEvents = MutableSharedFlow<DownloadCompleteEvent>()
-    val downloadCompleteEvents: SharedFlow<DownloadCompleteEvent> = _downloadCompleteEvents.asSharedFlow()
+    /** Fires when attachment bytes are ready and the UI should open the save dialog. */
+    private val _saveAttachmentRequests = MutableSharedFlow<SaveAttachmentRequest>()
+    val saveAttachmentRequests: SharedFlow<SaveAttachmentRequest> = _saveAttachmentRequests.asSharedFlow()
 
     /** Tracks the in-flight model stream so [stopGeneration] can cancel it. */
     private val streamControl = StreamControl()
@@ -315,50 +313,27 @@ class AIChatViewModel(
     }
 
     /**
-     * Saves a message attachment onto the device (see [downloadAttachmentToDevice] for the
-     * per-platform behavior: Android hands server-backed files to the system DownloadManager
-     * and polls it for completion so the user gets in-app feedback instead of only the
-     * notification).
+     * Saves a message attachment onto the device: local-only assets are copied from the
+     * picker path, server assets are fetched from the FatAI server. The bytes are handed to
+     * the UI, which opens the platform save dialog — the same flow on all three platforms.
      */
     fun downloadAttachment(asset: FileAsset) {
         screenModelScope.launch {
-            when (val result = downloadAttachmentToDevice(asset, fileAssetService)) {
-                is AttachmentDownloadResult.Enqueued -> {
-                    _toastEvents.emit("Downloading ${asset.displayName}…")
-                    when (val outcome = awaitAttachmentDownload(result.downloadId)) {
-                        is AttachmentDownloadResult.Saved -> {
-                            val fileName = outcome.fileName ?: asset.displayName
-                            _downloadCompleteEvents.emit(
-                                DownloadCompleteEvent(
-                                    message = "Attachment saved: $fileName",
-                                    fileName = fileName
-                                )
-                            )
-                        }
-                        is AttachmentDownloadResult.Failed ->
-                            _toastEvents.emit("Download failed: ${outcome.message}")
-                        // Never produced by awaitAttachmentDownload; exhaustiveness only.
-                        is AttachmentDownloadResult.Enqueued,
-                        AttachmentDownloadResult.Cancelled -> Unit
-                    }
+            try {
+                _toastEvents.emit("Downloading ${asset.displayName}…")
+                val bytes = if (asset.isLocalOnly()) {
+                    PlatformFile(asset.localPath).readBytes()
+                } else {
+                    fileAssetService.download(asset.id)
                 }
-                is AttachmentDownloadResult.Saved ->
-                    _toastEvents.emit("Attachment saved: ${result.fileName ?: asset.displayName}")
-                AttachmentDownloadResult.Cancelled -> Unit
-                is AttachmentDownloadResult.Failed ->
-                    _toastEvents.emit("Download failed: ${result.message}")
+                _saveAttachmentRequests.emit(
+                    SaveAttachmentRequest(asset.displayName, asset.mimeType, bytes)
+                )
+            } catch (e: Exception) {
+                _toastEvents.emit("Download failed: ${e.message ?: "unknown error"}")
             }
         }
     }
-
-    /**
-     * Fetches the original bytes of a server-backed attachment for image rendering.
-     *
-     * The local picker path of an uploaded file is a session-scoped URI on Android, so after
-     * an app restart images are loaded from the server instead. Null when the download fails.
-     */
-    suspend fun loadAttachmentBytes(asset: FileAsset): ByteArray? =
-        runCatching { fileAssetService.download(asset.id) }.getOrNull()
 
     fun sendMessage(analyzeAttachedFilePrompt: String) {
         val text = _state.value.inputText.trim()

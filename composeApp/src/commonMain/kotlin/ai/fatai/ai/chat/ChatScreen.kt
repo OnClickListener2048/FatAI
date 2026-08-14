@@ -1,6 +1,5 @@
 package ai.fatai.ai.chat
 
-import ai.fatai.ai.openDownloadedAttachment
 import ai.fatai.feature.files.FileAsset
 import ai.fatai.feature.files.FileAssetService
 import ai.fatai.feature.user.User
@@ -9,6 +8,7 @@ import ai.fatai.repo.ApiKeyRepository
 import ai.fatai.theme.OpenWebUISwitch
 import ai.fatai.viewmodel.AIChatViewModel
 import ai.fatai.viewmodel.ChatScreenState
+import ai.fatai.viewmodel.SaveAttachmentRequest
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -35,10 +35,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
@@ -69,10 +67,11 @@ import fatai.composeapp.generated.resources.analyze_attached_file
 import fatai.composeapp.generated.resources.attach_file
 import fatai.composeapp.generated.resources.new_conversation
 import fatai.composeapp.generated.resources.open_conversations
-import fatai.composeapp.generated.resources.open_download
 import fatai.composeapp.generated.resources.thinking_mode
+import io.github.vinceglb.filekit.dialogs.FileKitDialogSettings
 import io.github.vinceglb.filekit.dialogs.FileKitType
 import io.github.vinceglb.filekit.dialogs.compose.rememberFilePickerLauncher
+import io.github.vinceglb.filekit.dialogs.compose.rememberFileSaverLauncher
 import io.github.vinceglb.filekit.mimeType
 import io.github.vinceglb.filekit.name
 import io.github.vinceglb.filekit.readBytes
@@ -158,19 +157,25 @@ internal fun ChatScreen(onSettings: () -> Unit) {
             snackbarHostState.showSnackbar(message)
         }
     }
-    val openDownloadLabel = stringResource(Res.string.open_download)
+    // Attachment downloads end in the platform save dialog: the ViewModel streams the bytes
+    // here and the (deprecated) byte-based launch writes them through the platform saver
+    // (Android SAF, JVM file dialog, iOS document picker) — one uniform flow on all platforms.
+    val saveLauncher = rememberFileSaverLauncher(
+        dialogSettings = FileKitDialogSettings.createDefault()
+    ) { saved ->
+        if (saved != null) {
+            scope.launch { snackbarHostState.showSnackbar("Attachment saved: ${saved.name}") }
+        }
+    }
     LaunchedEffect(Unit) {
-        // The system DownloadManager already posts its own completion notification; the in-app
-        // snackbar with an "Open" action gives the user a direct path to the downloaded file.
-        viewModel.downloadCompleteEvents.collect { event ->
-            val action = snackbarHostState.showSnackbar(
-                message = event.message,
-                actionLabel = openDownloadLabel,
-                duration = SnackbarDuration.Short
+        viewModel.saveAttachmentRequests.collect { request ->
+            val (baseName, extension) = saveFileNameParts(request.displayName, request.mimeType)
+            @Suppress("DEPRECATION")
+            saveLauncher.launch(
+                bytes = request.bytes,
+                baseName = baseName,
+                extension = extension
             )
-            if (action == SnackbarResult.ActionPerformed && !openDownloadedAttachment(event.fileName)) {
-                snackbarHostState.showSnackbar("Cannot open the downloaded file")
-            }
         }
     }
 
@@ -421,4 +426,33 @@ internal fun ChatWorkspace(
             }
         }
     }
+}
+
+/**
+ * Splits a display name into a base name and a file extension for the save dialog. The
+ * extension is never null and never duplicated: "report.pdf" yields ("report", "pdf");
+ * a name without an extension falls back to the MIME type mapping, then to "bin".
+ */
+private fun saveFileNameParts(displayName: String, mimeType: String): Pair<String, String> {
+    val dotIndex = displayName.lastIndexOf('.')
+    if (dotIndex > 0) {
+        val base = displayName.substring(0, dotIndex)
+        val extension = displayName.substring(dotIndex + 1).ifBlank { extensionFor(mimeType) }
+        return base to extension
+    }
+    return displayName to extensionFor(mimeType)
+}
+
+private fun extensionFor(mimeType: String): String = when (mimeType.lowercase().substringBefore(';')) {
+    "application/pdf" -> "pdf"
+    "application/msword" -> "doc"
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document" -> "docx"
+    "application/vnd.ms-excel" -> "xls"
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" -> "xlsx"
+    "text/markdown" -> "md"
+    "text/plain" -> "txt"
+    "image/png" -> "png"
+    "image/jpeg" -> "jpg"
+    "image/webp" -> "webp"
+    else -> "bin"
 }
