@@ -318,6 +318,15 @@ class AIChatViewModel(
         }
     }
 
+    /**
+     * Fetches the original bytes of a server-backed attachment for image rendering.
+     *
+     * The local picker path of an uploaded file is a session-scoped URI on Android, so after
+     * an app restart images are loaded from the server instead. Null when the download fails.
+     */
+    suspend fun loadAttachmentBytes(asset: FileAsset): ByteArray? =
+        runCatching { fileAssetService.download(asset.id) }.getOrNull()
+
     fun sendMessage(analyzeAttachedFilePrompt: String) {
         val text = _state.value.inputText.trim()
         val pendingAttachments = _state.value.attachments

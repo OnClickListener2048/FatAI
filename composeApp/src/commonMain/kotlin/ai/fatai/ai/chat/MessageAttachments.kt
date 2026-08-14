@@ -1,6 +1,8 @@
 package ai.fatai.ai.chat
 
+import ai.fatai.ai.ServerAttachmentImage
 import ai.fatai.ai.canDownloadAttachment
+import ai.fatai.ai.isLocalOnly
 import ai.fatai.ai.openFileWithSystemApplication
 import ai.fatai.feature.files.FileAsset
 import androidx.compose.foundation.background
@@ -42,23 +44,37 @@ import org.jetbrains.compose.resources.stringResource
 @Composable
 internal fun MessageAttachments(
     attachments: List<FileAsset>,
-    onDownload: (FileAsset) -> Unit
+    onDownload: (FileAsset) -> Unit,
+    onLoadBytes: suspend (FileAsset) -> ByteArray?
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         attachments.forEach { asset ->
             if (asset.mimeType.startsWith("image/", ignoreCase = true)) {
                 Box {
-                    FileKitAsyncImage(
-                        file = PlatformFile(asset.localPath),
-                        contentDescription = asset.displayName,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .heightIn(max = 280.dp)
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(MaterialTheme.colorScheme.surfaceVariant)
-                            .clickable { openFileWithSystemApplication(asset.localPath, asset.mimeType) }
-                    )
+                    val imageModifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 280.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(MaterialTheme.colorScheme.surfaceVariant)
+                    if (asset.isLocalOnly()) {
+                        // Never reached the server; the picked path is the only copy.
+                        FileKitAsyncImage(
+                            file = PlatformFile(asset.localPath),
+                            contentDescription = asset.displayName,
+                            contentScale = ContentScale.Crop,
+                            modifier = imageModifier
+                                .clickable { openFileWithSystemApplication(asset.localPath, asset.mimeType) }
+                        )
+                    } else {
+                        // Uploaded to the server: render from the server, since the local
+                        // picker URI loses its permission grant after an app restart.
+                        ServerAttachmentImage(
+                            asset = asset,
+                            loadBytes = onLoadBytes,
+                            contentDescription = asset.displayName,
+                            modifier = imageModifier
+                        )
+                    }
                     if (canDownloadAttachment(asset)) {
                         DownloadAttachmentButton(
                             onClick = { onDownload(asset) },

@@ -56,7 +56,8 @@ internal fun ChatBubble(
     attachments: List<FileAsset>,
     showRegenerate: Boolean,
     onRegenerate: () -> Unit,
-    onDownloadAttachment: (FileAsset) -> Unit
+    onDownloadAttachment: (FileAsset) -> Unit,
+    onLoadAttachmentBytes: suspend (FileAsset) -> ByteArray?
 ) {
     val clipboardManager = LocalClipboardManager.current
     val isQuestion = msg.type == ChatItemType.Question
@@ -143,7 +144,11 @@ internal fun ChatBubble(
                     }
                     if (attachments.isNotEmpty()) {
                         Spacer(Modifier.height(8.dp))
-                        MessageAttachments(attachments, onDownload = onDownloadAttachment)
+                        MessageAttachments(
+                            attachments,
+                            onDownload = onDownloadAttachment,
+                            onLoadBytes = onLoadAttachmentBytes
+                        )
                     }
                     if (!isQuestion && msg.content.isNotBlank() && !msg.isLoading) {
                         Row(

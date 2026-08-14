@@ -6,8 +6,10 @@ import ai.fatai.feature.files.FileAsset
 import ai.fatai.repo.ChatItem
 import ai.fatai.viewmodel.AssistantActivity
 import ai.fatai.viewmodel.ChatScrollPosition
-import androidx.compose.foundation.border
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -15,12 +17,12 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
@@ -33,6 +35,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 import compose.icons.FeatherIcons
 import compose.icons.feathericons.ChevronDown
@@ -55,6 +58,7 @@ internal fun ChatMessagesArea(
     onScrollPositionChange: (String, Int, Int) -> Unit,
     onRegenerate: () -> Unit,
     onDownloadAttachment: (FileAsset) -> Unit,
+    onLoadAttachmentBytes: suspend (FileAsset) -> ByteArray?,
     modifier: Modifier = Modifier
 ) {
     val conversationId = messages.firstOrNull()?.conversationId
@@ -121,7 +125,8 @@ internal fun ChatMessagesArea(
                     showRegenerate = !isStreaming && msg.type == ChatItemType.Answer &&
                         msg.id == messages.lastOrNull()?.id,
                     onRegenerate = onRegenerate,
-                    onDownloadAttachment = onDownloadAttachment
+                    onDownloadAttachment = onDownloadAttachment,
+                    onLoadAttachmentBytes = onLoadAttachmentBytes
                 )
             }
             item { Spacer(Modifier.height(4.dp)) }
@@ -134,7 +139,7 @@ internal fun ChatMessagesArea(
                 .padding(vertical = 8.dp)
         )
         if (showBackToBottomButton) {
-            FloatingActionButton(
+            BackToBottomButton(
                 onClick = {
                     scrollScope.launch {
                         // This is a quick-jump control. An animated scroll reaches the trailing
@@ -144,13 +149,28 @@ internal fun ChatMessagesArea(
                 },
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
-                    .border(1.dp, MaterialTheme.colorScheme.outlineVariant, CircleShape)
-                    .padding(end = if (compactLayout) 16.dp else 24.dp, bottom = 16.dp),
-                containerColor = MaterialTheme.colorScheme.surfaceContainer,
-                contentColor = MaterialTheme.colorScheme.onSurfaceVariant
-            ) {
-                Icon(FeatherIcons.ChevronDown, stringResource(Res.string.back_to_bottom))
-            }
+                    .padding(end = if (compactLayout) 16.dp else 24.dp, bottom = 16.dp)
+            )
         }
+    }
+}
+
+/** Small circular jump-to-bottom control, matching the attachment download button. */
+@Composable
+private fun BackToBottomButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
+    Box(
+        modifier = modifier
+            .size(36.dp)
+            .clip(CircleShape)
+            .background(MaterialTheme.colorScheme.inverseSurface.copy(alpha = 0.75f))
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(
+            FeatherIcons.ChevronDown,
+            contentDescription = stringResource(Res.string.back_to_bottom),
+            tint = MaterialTheme.colorScheme.inverseOnSurface,
+            modifier = Modifier.size(16.dp)
+        )
     }
 }

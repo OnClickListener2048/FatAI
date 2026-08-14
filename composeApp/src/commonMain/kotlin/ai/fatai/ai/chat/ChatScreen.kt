@@ -167,7 +167,8 @@ internal fun ChatScreen(onSettings: () -> Unit) {
                     snackbarHostState = snackbarHostState,
                     onAttach = { filePicker.launch() },
                     sendPrompt = analyzeAttachedFilePrompt,
-                    onDownloadAttachment = viewModel::downloadAttachment
+                    onDownloadAttachment = viewModel::downloadAttachment,
+                    onLoadAttachmentBytes = viewModel::loadAttachmentBytes
                 )
             }
         } else {
@@ -198,7 +199,8 @@ internal fun ChatScreen(onSettings: () -> Unit) {
                         snackbarHostState = snackbarHostState,
                         onAttach = { filePicker.launch() },
                         sendPrompt = analyzeAttachedFilePrompt,
-                        onDownloadAttachment = viewModel::downloadAttachment
+                        onDownloadAttachment = viewModel::downloadAttachment,
+                        onLoadAttachmentBytes = viewModel::loadAttachmentBytes
                     )
                 }
             }
@@ -265,7 +267,8 @@ internal fun ChatWorkspace(
     snackbarHostState: SnackbarHostState,
     onAttach: () -> Unit,
     sendPrompt: String,
-    onDownloadAttachment: (FileAsset) -> Unit
+    onDownloadAttachment: (FileAsset) -> Unit,
+    onLoadAttachmentBytes: suspend (FileAsset) -> ByteArray?
 ) {
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
@@ -359,6 +362,7 @@ internal fun ChatWorkspace(
                     onScrollPositionChange = viewModel::updateChatScrollPosition,
                     onRegenerate = viewModel::regenerate,
                     onDownloadAttachment = onDownloadAttachment,
+                    onLoadAttachmentBytes = onLoadAttachmentBytes,
                     modifier = Modifier.weight(1f)
                 )
                 HorizontalDivider()
