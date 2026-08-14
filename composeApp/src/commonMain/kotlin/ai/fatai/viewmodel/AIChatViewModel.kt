@@ -298,6 +298,10 @@ class AIChatViewModel(
         attachmentManager.removeAttachment(id)
     }
 
+    /**
+     * Saves a message attachment onto the device (see [downloadAttachmentToDevice] for the
+     * per-platform behavior: Android uses the system DownloadManager for server-backed files).
+     */
     fun sendMessage(analyzeAttachedFilePrompt: String) {
         val text = _state.value.inputText.trim()
         val pendingAttachments = _state.value.attachments
@@ -438,8 +442,10 @@ class AIChatViewModel(
         replaceMessageId: String? = null
     ) {
         val config = _state.value.activeConfig ?: return
+        // Blank turns (stopped before any text, tool-only rounds) carry no information to the
+        // server; the server rejects empty content, so drop them instead of sending "".
         val history = messages
-            .filter { !it.isLoading && !it.content.startsWith("Error:") }
+            .filter { !it.isLoading && it.content.isNotBlank() && !it.content.startsWith("Error:") }
             .map {
                 ChatMessage(role = if (it.type == ChatItemType.Question) "user" else "assistant", content = it.content)
             }
