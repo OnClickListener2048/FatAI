@@ -3,9 +3,12 @@ package ai.fatai.feature.files
 import io.ktor.client.HttpClient
 import io.ktor.client.request.forms.formData
 import io.ktor.client.request.forms.submitFormWithBinaryData
+import io.ktor.client.plugins.onDownload
 import io.ktor.client.plugins.onUpload
+import io.ktor.client.request.get
 import io.ktor.client.request.header
 import io.ktor.client.request.parameter
+import io.ktor.client.statement.bodyAsBytes
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.Headers
 import io.ktor.http.HttpHeaders
@@ -28,6 +31,11 @@ class FileAssetService(
     private val serverUrl: String = DEFAULT_FILE_SERVER_URL,
     private val accessToken: suspend () -> String
 ) {
+    /** Server base URL without a trailing slash; platform download paths build URLs from it. */
+    val serverBaseUrl: String get() = serverUrl.trimEnd('/')
+
+    /** Fresh Bearer token provider, shared with the platform download paths. */
+    val accessTokenProvider: suspend () -> String get() = accessToken
     /**
      * @param onProgress reports uploaded bytes; `total` is the request content length and may
      * be 0 when the engine cannot determine it.
@@ -64,6 +72,33 @@ class FileAssetService(
             )
         }
         return json.decodeFromString<UploadedFile>(body)
+    }
+
+    /**
+     * Downloads the original bytes of an uploaded attachment (`GET /v1/files/{file_id}`).
+     *
+     * Used by the desktop/iOS save-dialog paths; Android hands the URL to the system
+     * DownloadManager instead and never fetches the bytes in-app.
+     *
+     * @param onProgress reports received bytes; `total` may be 0 when unknown.
+     */
+    suspend fun download(
+        fileId: String,
+        onProgress: (received: Long, total: Long) -> Unit = { _, _ -> }
+    ): ByteArray {
+        val response = client.get("$serverBaseUrl/v1/files/$fileId") {
+            header("Authorization", "Bearer ${accessToken()}")
+            onDownload { bytesReceivedTotal, contentLength ->
+                onProgress(bytesReceivedTotal, contentLength ?: 0L)
+            }
+        }
+        if (!response.status.isSuccess()) {
+            throw FileUploadException(
+                response.status.value,
+                "File download failed with HTTP ${response.status.value}."
+            )
+        }
+        return response.bodyAsBytes()
     }
 
     private companion object {

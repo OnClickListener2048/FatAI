@@ -9,6 +9,7 @@
     <string name="create_workspace">Create workspace</string>
     <string name="search_chats">Search chats</string>
     <string name="attach_file">Attach file</string>
+    <string name="download_attachment">Download attachment</string>
     <string name="back_to_bottom">Back to bottom</string>
     <string name="analyze_attached_file">Please analyze the attached file.</string>
     <string name="conversation_actions">Conversation actions</string>

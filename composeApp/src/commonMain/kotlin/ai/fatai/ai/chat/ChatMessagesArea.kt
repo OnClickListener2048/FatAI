@@ -54,6 +54,7 @@ internal fun ChatMessagesArea(
     scrollPosition: ChatScrollPosition,
     onScrollPositionChange: (String, Int, Int) -> Unit,
     onRegenerate: () -> Unit,
+    onDownloadAttachment: (FileAsset) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val conversationId = messages.firstOrNull()?.conversationId
@@ -119,7 +120,8 @@ internal fun ChatMessagesArea(
                     attachments = messageAttachments[msg.id].orEmpty(),
                     showRegenerate = !isStreaming && msg.type == ChatItemType.Answer &&
                         msg.id == messages.lastOrNull()?.id,
-                    onRegenerate = onRegenerate
+                    onRegenerate = onRegenerate,
+                    onDownloadAttachment = onDownloadAttachment
                 )
             }
             item { Spacer(Modifier.height(4.dp)) }

@@ -10,6 +10,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import ai.fatai.ai.AttachmentDownloadResult
+import ai.fatai.ai.downloadAttachment as downloadAttachmentToDevice
 import ai.fatai.bean.ChatItemType
 import ai.fatai.bean.MessageContentType
 import ai.fatai.chat.ChatMessage
@@ -302,6 +304,20 @@ class AIChatViewModel(
      * Saves a message attachment onto the device (see [downloadAttachmentToDevice] for the
      * per-platform behavior: Android uses the system DownloadManager for server-backed files).
      */
+    fun downloadAttachment(asset: FileAsset) {
+        screenModelScope.launch {
+            when (val result = downloadAttachmentToDevice(asset, fileAssetService)) {
+                AttachmentDownloadResult.Enqueued ->
+                    _toastEvents.emit("Downloading ${asset.displayName}…")
+                AttachmentDownloadResult.Saved ->
+                    _toastEvents.emit("Attachment saved: ${asset.displayName}")
+                AttachmentDownloadResult.Cancelled -> Unit
+                is AttachmentDownloadResult.Failed ->
+                    _toastEvents.emit("Download failed: ${result.message}")
+            }
+        }
+    }
+
     fun sendMessage(analyzeAttachedFilePrompt: String) {
         val text = _state.value.inputText.trim()
         val pendingAttachments = _state.value.attachments

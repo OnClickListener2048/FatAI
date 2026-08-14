@@ -1,5 +1,6 @@
 package ai.fatai.ai.chat
 
+import ai.fatai.feature.files.FileAsset
 import ai.fatai.feature.user.User
 import ai.fatai.feature.user.UserRepository
 import ai.fatai.repo.ApiKeyRepository
@@ -165,7 +166,8 @@ internal fun ChatScreen(onSettings: () -> Unit) {
                     scope = scope,
                     snackbarHostState = snackbarHostState,
                     onAttach = { filePicker.launch() },
-                    sendPrompt = analyzeAttachedFilePrompt
+                    sendPrompt = analyzeAttachedFilePrompt,
+                    onDownloadAttachment = viewModel::downloadAttachment
                 )
             }
         } else {
@@ -195,7 +197,8 @@ internal fun ChatScreen(onSettings: () -> Unit) {
                         scope = scope,
                         snackbarHostState = snackbarHostState,
                         onAttach = { filePicker.launch() },
-                        sendPrompt = analyzeAttachedFilePrompt
+                        sendPrompt = analyzeAttachedFilePrompt,
+                        onDownloadAttachment = viewModel::downloadAttachment
                     )
                 }
             }
@@ -261,7 +264,8 @@ internal fun ChatWorkspace(
     scope: CoroutineScope,
     snackbarHostState: SnackbarHostState,
     onAttach: () -> Unit,
-    sendPrompt: String
+    sendPrompt: String,
+    onDownloadAttachment: (FileAsset) -> Unit
 ) {
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
@@ -354,6 +358,7 @@ internal fun ChatWorkspace(
                     scrollPosition = state.chatScrollPosition,
                     onScrollPositionChange = viewModel::updateChatScrollPosition,
                     onRegenerate = viewModel::regenerate,
+                    onDownloadAttachment = onDownloadAttachment,
                     modifier = Modifier.weight(1f)
                 )
                 HorizontalDivider()

@@ -9,6 +9,7 @@
     <string name="create_workspace">创建工作区</string>
     <string name="search_chats">搜索聊天</string>
     <string name="attach_file">添加文件</string>
+    <string name="download_attachment">下载附件</string>
     <string name="back_to_bottom">回到底部</string>
     <string name="analyze_attached_file">请分析已附加的文件。</string>
     <string name="conversation_actions">会话操作</string>
