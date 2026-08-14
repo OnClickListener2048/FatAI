@@ -1,5 +1,6 @@
 package ai.fatai.ai.chat
 
+import ai.fatai.ai.openDownloadedAttachment
 import ai.fatai.feature.files.FileAsset
 import ai.fatai.feature.user.User
 import ai.fatai.feature.user.UserRepository
@@ -33,8 +34,10 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
@@ -61,6 +64,7 @@ import fatai.composeapp.generated.resources.analyze_attached_file
 import fatai.composeapp.generated.resources.attach_file
 import fatai.composeapp.generated.resources.new_conversation
 import fatai.composeapp.generated.resources.open_conversations
+import fatai.composeapp.generated.resources.open_download
 import fatai.composeapp.generated.resources.thinking_mode
 import io.github.vinceglb.filekit.dialogs.FileKitType
 import io.github.vinceglb.filekit.dialogs.compose.rememberFilePickerLauncher
@@ -132,6 +136,21 @@ internal fun ChatScreen(onSettings: () -> Unit) {
     LaunchedEffect(Unit) {
         viewModel.toastEvents.collect { message ->
             snackbarHostState.showSnackbar(message)
+        }
+    }
+    val openDownloadLabel = stringResource(Res.string.open_download)
+    LaunchedEffect(Unit) {
+        // The system DownloadManager already posts its own completion notification; the in-app
+        // snackbar with an "Open" action gives the user a direct path to the downloaded file.
+        viewModel.downloadCompleteEvents.collect { event ->
+            val action = snackbarHostState.showSnackbar(
+                message = event.message,
+                actionLabel = openDownloadLabel,
+                duration = SnackbarDuration.Short
+            )
+            if (action == SnackbarResult.ActionPerformed && !openDownloadedAttachment(event.fileName)) {
+                snackbarHostState.showSnackbar("Cannot open the downloaded file")
+            }
         }
     }
 

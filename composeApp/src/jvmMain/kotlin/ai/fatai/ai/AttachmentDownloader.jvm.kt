@@ -42,8 +42,14 @@ private suspend fun saveBytesWithDialog(asset: FileAsset, bytes: ByteArray): Att
             val chosen = dialog.files.firstOrNull()
                 ?: return@withContext AttachmentDownloadResult.Cancelled
             chosen.writeBytes(bytes)
-            AttachmentDownloadResult.Saved
+            AttachmentDownloadResult.Saved(fileName = chosen.name)
         } catch (e: Exception) {
             AttachmentDownloadResult.Failed(e.message ?: "Save failed")
         }
     }
+
+actual suspend fun awaitAttachmentDownload(downloadId: Long): AttachmentDownloadResult =
+    // The desktop path writes synchronously through the save dialog; no background tracking.
+    AttachmentDownloadResult.Failed("Download tracking is only supported on Android")
+
+actual suspend fun openDownloadedAttachment(fileName: String): Boolean = false

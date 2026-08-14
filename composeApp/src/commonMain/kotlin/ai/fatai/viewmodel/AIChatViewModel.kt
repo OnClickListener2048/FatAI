@@ -11,6 +11,7 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import ai.fatai.ai.AttachmentDownloadResult
+import ai.fatai.ai.awaitAttachmentDownload
 import ai.fatai.ai.downloadAttachment as downloadAttachmentToDevice
 import ai.fatai.bean.ChatItemType
 import ai.fatai.bean.MessageContentType
@@ -32,6 +33,12 @@ import ai.fatai.repo.ChatRepository
 import ai.fatai.repo.ApiKeyRepository
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
+
+/**
+ * A system download that finished in the background; [fileName] is what landed in the public
+ * Downloads directory (or the display name as fallback).
+ */
+data class DownloadCompleteEvent(val message: String, val fileName: String)
 
 /**
  * State hub for the chat screen.
@@ -62,6 +69,13 @@ class AIChatViewModel(
 
     private val _toastEvents = MutableSharedFlow<String>()
     val toastEvents: SharedFlow<String> = _toastEvents.asSharedFlow()
+
+    /**
+     * Fires when a system-DownloadManager transfer finishes, so the UI can offer an in-app
+     * "open" action instead of leaving the user to discover the notification on their own.
+     */
+    private val _downloadCompleteEvents = MutableSharedFlow<DownloadCompleteEvent>()
+    val downloadCompleteEvents: SharedFlow<DownloadCompleteEvent> = _downloadCompleteEvents.asSharedFlow()
 
     /** Tracks the in-flight model stream so [stopGeneration] can cancel it. */
     private val streamControl = StreamControl()
@@ -302,15 +316,34 @@ class AIChatViewModel(
 
     /**
      * Saves a message attachment onto the device (see [downloadAttachmentToDevice] for the
-     * per-platform behavior: Android uses the system DownloadManager for server-backed files).
+     * per-platform behavior: Android hands server-backed files to the system DownloadManager
+     * and polls it for completion so the user gets in-app feedback instead of only the
+     * notification).
      */
     fun downloadAttachment(asset: FileAsset) {
         screenModelScope.launch {
             when (val result = downloadAttachmentToDevice(asset, fileAssetService)) {
-                AttachmentDownloadResult.Enqueued ->
+                is AttachmentDownloadResult.Enqueued -> {
                     _toastEvents.emit("Downloading ${asset.displayName}…")
-                AttachmentDownloadResult.Saved ->
-                    _toastEvents.emit("Attachment saved: ${asset.displayName}")
+                    when (val outcome = awaitAttachmentDownload(result.downloadId)) {
+                        is AttachmentDownloadResult.Saved -> {
+                            val fileName = outcome.fileName ?: asset.displayName
+                            _downloadCompleteEvents.emit(
+                                DownloadCompleteEvent(
+                                    message = "Attachment saved: $fileName",
+                                    fileName = fileName
+                                )
+                            )
+                        }
+                        is AttachmentDownloadResult.Failed ->
+                            _toastEvents.emit("Download failed: ${outcome.message}")
+                        // Never produced by awaitAttachmentDownload; exhaustiveness only.
+                        is AttachmentDownloadResult.Enqueued,
+                        AttachmentDownloadResult.Cancelled -> Unit
+                    }
+                }
+                is AttachmentDownloadResult.Saved ->
+                    _toastEvents.emit("Attachment saved: ${result.fileName ?: asset.displayName}")
                 AttachmentDownloadResult.Cancelled -> Unit
                 is AttachmentDownloadResult.Failed ->
                     _toastEvents.emit("Download failed: ${result.message}")

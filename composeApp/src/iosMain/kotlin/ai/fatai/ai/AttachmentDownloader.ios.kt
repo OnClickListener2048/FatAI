@@ -51,5 +51,11 @@ private fun presentExportPicker(url: NSURL): AttachmentDownloadResult {
         ?: return AttachmentDownloadResult.Failed("No active window to present the save dialog")
     val picker = UIDocumentPickerViewController(forExportingURLs = listOf(url))
     root.presentViewController(picker, animated = true, completion = null)
-    return AttachmentDownloadResult.Saved
+    return AttachmentDownloadResult.Saved(fileName = url.lastPathComponent)
 }
+
+actual suspend fun awaitAttachmentDownload(downloadId: Long): AttachmentDownloadResult =
+    // iOS saves through the document picker; no background download to track.
+    AttachmentDownloadResult.Failed("Download tracking is only supported on Android")
+
+actual suspend fun openDownloadedAttachment(fileName: String): Boolean = false

@@ -4,13 +4,13 @@ import ai.fatai.feature.files.FileAsset
 import ai.fatai.feature.files.FileAssetService
 import ai.fatai.viewmodel.LOCAL_ATTACHMENT_PREFIX
 
-/** Outcome of [downloadAttachment], surfaced to the user as a toast. */
+/** Outcome of [downloadAttachment] / [awaitAttachmentDownload], surfaced to the user. */
 sealed interface AttachmentDownloadResult {
     /** The system DownloadManager took over (Android); progress lives in its notification. */
-    data object Enqueued : AttachmentDownloadResult
+    data class Enqueued(val downloadId: Long) : AttachmentDownloadResult
 
-    /** Bytes written to a user-chosen location. */
-    data object Saved : AttachmentDownloadResult
+    /** Bytes written to a user-chosen location; [fileName] is the final file name when known. */
+    data class Saved(val fileName: String? = null) : AttachmentDownloadResult
 
     /** The user dismissed the save dialog without picking a location. */
     data object Cancelled : AttachmentDownloadResult
@@ -33,6 +33,25 @@ expect suspend fun downloadAttachment(
     fileAssetService: FileAssetService,
     onProgress: (Long, Long) -> Unit = { _, _ -> }
 ): AttachmentDownloadResult
+
+/**
+ * Waits for a download enqueued with the system DownloadManager to finish and reports the
+ * outcome. Polls the DownloadManager state so the app can show in-app feedback ("saved",
+ * "failed") once the transfer completes; the polled coroutine dies with the process, while
+ * the system download itself continues and still posts its notification.
+ *
+ * Only meaningful for the [Enqueued] result of [downloadAttachment] on Android; other
+ * platforms never return [Enqueued] and report a failure here.
+ */
+expect suspend fun awaitAttachmentDownload(downloadId: Long): AttachmentDownloadResult
+
+/**
+ * Opens a file downloaded by the system DownloadManager (Android) with the platform viewer.
+ * On Android 11+ the public Downloads directory is scoped storage, so the file is resolved
+ * through MediaStore instead of by path. Returns false when nothing can be opened; only
+ * meaningful on Android, other platforms report false.
+ */
+expect suspend fun openDownloadedAttachment(fileName: String): Boolean
 
 /**
  * Whether the download affordance is meaningful for [asset] on this platform.
