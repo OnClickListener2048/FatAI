@@ -111,6 +111,14 @@ class AISettingsScreen {
         // Reload memories every time the screen opens and when remote changes arrive.
         LaunchedEffect(Unit) {
             serverSync.remoteChangesApplied.collect {
+                val syncedKeys = apiKeyRepo.getAllKeys()
+                // Fresh install: the first snapshot delivers the model configurations. Dismiss
+                // the auto-opened "add a key" dialog only when keys actually arrive (never
+                // re-open it after the user dismissed it manually).
+                if (syncedKeys.isNotEmpty() && keys.isEmpty() && showAddDialog) {
+                    showAddDialog = false
+                }
+                keys = syncedKeys
                 memories = memoryRepo.getAll(MemoryScope.GLOBAL)
             }
         }

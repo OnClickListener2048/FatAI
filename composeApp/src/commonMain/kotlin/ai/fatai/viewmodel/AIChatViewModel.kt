@@ -110,6 +110,10 @@ class AIChatViewModel(
         // from the background pull; reload the visible lists so the UI stays current.
         screenModelScope.launch {
             serverSync.remoteChangesApplied.collect {
+                // First pull on a fresh install delivers the model configurations from the
+                // server snapshot; without this the input bar stays disabled with the
+                // "add an API key" placeholder even though the keys synced back.
+                loadActiveConfig()
                 loadConversations()
                 val current = _state.value.currentConversationId
                 // Skip the message reload while streaming: the in-progress assistant message
