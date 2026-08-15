@@ -155,6 +155,14 @@ class OpenAICompatibleProvider(
                 header("Authorization", "Bearer ${config.apiKey}")
                 contentType(jsonUtf8ContentType)
                 setBody(json.encodeToString(request))
+                timeout {
+                    // The shared client on JVM disables request timeouts for SSE; a hanging local
+                    // service must not stall the caller (memory extraction / title generation)
+                    // indefinitely, so bound the non-streaming call explicitly.
+                    requestTimeoutMillis = 30_000L
+                    connectTimeoutMillis = 10_000L
+                    socketTimeoutMillis = 30_000L
+                }
             }
             val body = response.bodyAsText()
             val result = json.decodeFromString<OpenAIResponse>(body)

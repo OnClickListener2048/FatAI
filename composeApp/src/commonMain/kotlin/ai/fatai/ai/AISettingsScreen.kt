@@ -57,6 +57,13 @@ import ai.fatai.repo.ApiKeyRepository
 import ai.fatai.repo.ApiKeyInfo
 import ai.fatai.feature.settings.SettingsRepository
 import ai.fatai.feature.settings.ThemeMode
+import ai.fatai.feature.model.LOCAL_MODEL_ENGINE_EMBEDDED
+import ai.fatai.feature.model.LOCAL_MODEL_ENGINE_HTTP
+import ai.fatai.feature.model.LocalModelDownloader
+import ai.fatai.feature.model.SETTING_LOCAL_MODEL_BASE_URL
+import ai.fatai.feature.model.SETTING_LOCAL_MODEL_ENABLED
+import ai.fatai.feature.model.SETTING_LOCAL_MODEL_ENGINE
+import ai.fatai.feature.model.SETTING_LOCAL_MODEL_NAME
 import ai.fatai.feature.memory.MemoryEntry
 import ai.fatai.feature.memory.MemoryRepository
 import ai.fatai.feature.memory.MemoryScope
@@ -69,6 +76,8 @@ import fatai.composeapp.generated.resources.Res
 import fatai.composeapp.generated.resources.*
 import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.koinInject
+import org.koin.mp.KoinPlatform
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 
 class AISettingsScreen {
@@ -95,6 +104,9 @@ class AISettingsScreen {
         var editingMemory by remember { mutableStateOf<MemoryEntry?>(null) }
         var newMemoryContent by remember { mutableStateOf("") }
         var editMemoryContent by remember { mutableStateOf("") }
+        // Embedded (cactus) engines are Android-only; desktop and iOS expose the HTTP engine,
+        // so the download/engine controls are hidden there.
+        val localModelDownloader = remember { KoinPlatform.getKoin().getOrNull<LocalModelDownloader>() }
 
         // Reload memories every time the screen opens and when remote changes arrive.
         LaunchedEffect(Unit) {
@@ -245,6 +257,15 @@ class AISettingsScreen {
                         }
                     }
                 }
+
+                Spacer(Modifier.height(20.dp))
+                Text(stringResource(Res.string.local_model), style = MaterialTheme.typography.titleMedium)
+                Spacer(Modifier.height(8.dp))
+                LocalModelSection(
+                    settingsRepo = settingsRepo,
+                    downloader = localModelDownloader,
+                    scope = scope
+                )
 
                 Spacer(Modifier.height(20.dp))
                 Row(
@@ -756,3 +777,185 @@ private fun ClearMemoryDialog(
         }
     )
 }
+
+private val EMBEDDED_MODEL_OPTIONS = listOf("qwen3-0.6", "gemma3-270m")
+
+@Composable
+private fun LocalModelSection(
+    settingsRepo: SettingsRepository,
+    downloader: LocalModelDownloader?,
+    scope: CoroutineScope
+) {
+    var enabled by remember { mutableStateOf(settingsRepo.getValue(SETTING_LOCAL_MODEL_ENABLED) == "true") }
+    var engine by remember {
+        mutableStateOf(settingsRepo.getValue(SETTING_LOCAL_MODEL_ENGINE) ?: LOCAL_MODEL_ENGINE_EMBEDDED)
+    }
+    var baseUrl by remember { mutableStateOf(settingsRepo.getValue(SETTING_LOCAL_MODEL_BASE_URL) ?: "") }
+    var modelName by remember { mutableStateOf(settingsRepo.getValue(SETTING_LOCAL_MODEL_NAME) ?: "") }
+    var downloadState by remember {
+        mutableStateOf(
+            if (downloader != null && downloader.isModelDownloaded(modelName.ifBlank { EMBEDDED_MODEL_OPTIONS.first() })) {
+                DOWNLOAD_STATE_DONE
+            } else {
+                ""
+            }
+        )
+    }
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(14.dp),
+        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+    ) {
+        Column(modifier = Modifier.padding(14.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(stringResource(Res.string.local_model), fontWeight = FontWeight.Medium)
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        stringResource(Res.string.local_model_description),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Spacer(Modifier.width(12.dp))
+                OpenWebUISwitch(
+                    checked = enabled,
+                    onCheckedChange = { newValue ->
+                        enabled = newValue
+                        settingsRepo.putValue(SETTING_LOCAL_MODEL_ENABLED, if (newValue) "true" else "false")
+                    }
+                )
+            }
+
+            if (enabled) {
+                Spacer(Modifier.height(14.dp))
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+                Spacer(Modifier.height(10.dp))
+
+                if (downloader != null) {
+                    SettingsDropdownField(
+                        label = stringResource(Res.string.local_model_engine),
+                        options = listOf(
+                            LOCAL_MODEL_ENGINE_EMBEDDED to stringResource(Res.string.local_model_engine_embedded),
+                            LOCAL_MODEL_ENGINE_HTTP to stringResource(Res.string.local_model_engine_http)
+                        ),
+                        selected = engine,
+                        onSelect = { selectedEngine ->
+                            engine = selectedEngine
+                            settingsRepo.putValue(SETTING_LOCAL_MODEL_ENGINE, selectedEngine)
+                        }
+                    )
+                    Spacer(Modifier.height(10.dp))
+                }
+
+                val embeddedControls = engine == LOCAL_MODEL_ENGINE_EMBEDDED && downloader != null
+                if (embeddedControls) {
+                    SettingsDropdownField(
+                        label = stringResource(Res.string.local_model_name),
+                        options = EMBEDDED_MODEL_OPTIONS.map { it to it },
+                        selected = modelName.ifBlank { EMBEDDED_MODEL_OPTIONS.first() },
+                        onSelect = { selectedModel ->
+                            modelName = selectedModel
+                            settingsRepo.putValue(SETTING_LOCAL_MODEL_NAME, selectedModel)
+                            downloadState = if (downloader.isModelDownloaded(selectedModel)) DOWNLOAD_STATE_DONE else ""
+                        }
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        stringResource(Res.string.local_model_arm64_only),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(Modifier.height(10.dp))
+                    Button(
+                        onClick = {
+                            scope.launch {
+                                downloadState = DOWNLOAD_STATE_RUNNING
+                                downloadState = if (downloader.downloadModel(modelName.ifBlank { EMBEDDED_MODEL_OPTIONS.first() }).isSuccess) {
+                                    DOWNLOAD_STATE_DONE
+                                } else {
+                                    DOWNLOAD_STATE_FAILED
+                                }
+                            }
+                        },
+                        enabled = downloadState != DOWNLOAD_STATE_RUNNING,
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Text(
+                            when (downloadState) {
+                                DOWNLOAD_STATE_DONE -> stringResource(Res.string.local_model_downloaded)
+                                DOWNLOAD_STATE_FAILED -> stringResource(Res.string.local_model_download_failed)
+                                else -> stringResource(Res.string.local_model_download)
+                            }
+                        )
+                    }
+                } else {
+                    OutlinedTextField(
+                        value = baseUrl,
+                        onValueChange = { newValue ->
+                            baseUrl = newValue
+                            settingsRepo.putValue(SETTING_LOCAL_MODEL_BASE_URL, newValue)
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text(stringResource(Res.string.local_model_base_url)) },
+                        placeholder = { Text(stringResource(Res.string.local_model_base_url_hint)) },
+                        singleLine = true
+                    )
+                    Spacer(Modifier.height(10.dp))
+                    OutlinedTextField(
+                        value = modelName,
+                        onValueChange = { newValue ->
+                            modelName = newValue
+                            settingsRepo.putValue(SETTING_LOCAL_MODEL_NAME, newValue)
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text(stringResource(Res.string.local_model_name)) },
+                        singleLine = true
+                    )
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun SettingsDropdownField(
+    label: String,
+    options: List<Pair<String, String>>,
+    selected: String,
+    onSelect: (String) -> Unit
+) {
+    var expanded by remember { mutableStateOf(false) }
+    ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = it }) {
+        OutlinedTextField(
+            value = options.firstOrNull { it.first == selected }?.second ?: selected,
+            onValueChange = {},
+            readOnly = true,
+            label = { Text(label) },
+            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+            modifier = Modifier.fillMaxWidth().menuAnchor(),
+            singleLine = true
+        )
+        ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            options.forEach { (value, display) ->
+                DropdownMenuItem(
+                    text = { Text(display) },
+                    onClick = {
+                        expanded = false
+                        onSelect(value)
+                    }
+                )
+            }
+        }
+    }
+}
+
+private const val DOWNLOAD_STATE_DONE = "done"
+private const val DOWNLOAD_STATE_RUNNING = "running"
+private const val DOWNLOAD_STATE_FAILED = "failed"

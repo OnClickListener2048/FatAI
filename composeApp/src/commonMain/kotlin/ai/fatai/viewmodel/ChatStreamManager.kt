@@ -79,6 +79,7 @@ class ChatStreamManager(
     private val modelGateway: ModelGateway,
     private val toolRegistry: ToolRegistry,
     private val conversationMemoryService: ConversationMemoryService,
+    private val conversationTitleService: ConversationTitleService,
     private val currentUser: CurrentUserProvider,
     private val serverSync: FatAiServerSync,
     private val scope: CoroutineScope,
@@ -307,8 +308,17 @@ class ChatStreamManager(
             sync = false,
             sources = assistantMsg.sources
         )
-        // The server generates a model-based title for new conversations and syncs it
-        // back through the change stream; nothing to update locally here.
+        // The client titles new conversations on-device (LOCAL_ONLY route). When the local
+        // path fails the server's own title flow still generates while the title is default.
+        request.history.firstOrNull { it.role == "user" }?.let { firstUserMessage ->
+            scope.launch {
+                conversationTitleService.generateIfNeeded(
+                    request.conversationId,
+                    firstUserMessage.content,
+                    request.config
+                )
+            }
+        }
         onState(getState().copy(isStreaming = false, assistantActivity = null))
         onLoadConversations()
         request.summarizeConversation?.let { messages ->

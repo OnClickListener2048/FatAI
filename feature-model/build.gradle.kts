@@ -26,6 +26,7 @@ kotlin {
         androidMain.dependencies {
             implementation(libs.ktor.client.android)
             implementation(libs.ktor.client.okhttp)
+            implementation(libs.cactus.kotlin)
         }
         jvmMain.dependencies { implementation(libs.ktor.client.cio) }
         appleMain.dependencies { implementation(libs.ktor.client.darwin) }

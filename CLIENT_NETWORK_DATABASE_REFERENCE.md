@@ -83,6 +83,34 @@
 
 `thinking` 字段定义在请求模型中，但当前客户端不会为它赋值。直连响应中的 token usage 已有数据类定义，但当前没有映射进 `ChatStreamChunk`。
 
+### 端侧本地 AI 路由（`LocalFirstRouterGateway`）
+
+`LocalFirstRouterGateway` 是 DI 中的默认 `ModelGateway`（`sharedModule`），按 `ProviderConfig.localRoute` 分派。`LocalRouteMode` 枚举：
+
+| 路由模式 | 行为 | 使用方 |
+| --- | --- | --- |
+| `NONE`（默认） | 始终走 FatAI server。 | 聊天主流程、会话摘要、附件分析 |
+| `LOCAL_FIRST` | 本地引擎可用则调用；失败回退 FatAI server。 | 记忆提取（`UserMemoryExtractionService`，保证失败不损失记忆质量） |
+| `LOCAL_ONLY` | 本地引擎可用则调用；失败返回空流，绝不回退云端。 | 客户端标题生成（失败由 server 标题流程兜底，避免双份计费） |
+
+本地引擎 `LocalModelEngine` 由各平台 `platformModule` 注册：
+
+- **Android**：`CactusLocalModelEngine` 内嵌 cactus-kotlin（`com.cactuscompute:cactus:1.4.1-beta`，仅 arm64-v8a JNI，API 24+）；设置 `local_model_engine=http` 时委托 `HttpLocalModelEngine`。`LocalModelDownloader` 提供模型下载/状态给设置 UI。
+- **JVM / iOS**：`HttpLocalModelEngine` —— 经 `OpenAICompatibleProvider.chatSync` 直连任意 OpenAI-compatible 本地服务（cactus serve / Ollama / LM Studio；`chatSync` 现显式设置 30s 请求/10s 连接/30s 套接字超时，防挂起本地服务卡死调用方）。
+
+本地调用不经过 FatAI server：不产生 `token_usage_entries` 账本行、不进入侧边栏 token 统计（省 token 的可见效果）；云端回退时与既有行为完全一致。
+
+本地模型配置是设备私有设置（存 `AppSetting`，与 `memory_enabled` 同机制，**不同步 server**）：
+
+| 设置键 | 含义 |
+| --- | --- |
+| `local_model_enabled` | `"true"`/`"false"` 总开关 |
+| `local_model_engine` | `embedded`（默认，Android）或 `http` |
+| `local_model_base_url` | HTTP 模式的本地服务地址（如 `http://localhost:11434`；cactus serve 请用非 8080 端口） |
+| `local_model_name` | HTTP 模式的模型名；embedded 模式为 qwen3-0.6 / gemma3-270m |
+
+客户端标题生成：首轮回复完成后 `ConversationTitleService.generateIfNeeded` 以 `LOCAL_ONLY` 路由本地生成标题（≤30 字符、与消息同语言、无引号/Markdown），经 `ChatRepository.updateConversationTitle`（ChatRepository.kt:111，自带 outbox 同步）推送到 server；失败静默，server 的 `generate_title_in_background` 在标题仍为默认值（空/`New Chat`/`New conversation`）时自行兜底生成，不与云端重复计费。`updateConversationTitle` 由此获得首个调用点。
+
 ### HTTP 客户端与未实现接口
 
 - Android 使用 Ktor OkHttp，JVM Desktop 使用 CIO，iOS 使用 Darwin。
@@ -107,7 +135,7 @@
 | `MemoryEntry` | 长短期记忆：`id`、`userId`、`scope`、`workspaceId?`、`conversationId?`、`kind`、`content`、时间、`isArchived`。 |
 | `PromptTemplate` | 提示词模板：`id`、`userId`、`name`、`content`、`workspaceId?`、`priority`、`isEnabled`、时间。 |
 | `FileAsset` | 已选附件的本地元数据：`id`、`userId`、`workspaceId?`、`conversationId?`、`messageId?`、文件名、MIME、`localPath`、`sizeBytes`、`url`、`createdAt`。文件内容不写入数据库。`id` 在附件上传成功后为服务端返回的资产 id（用于 `file_id` 读取）；上传失败时使用 `local-` 前缀的本地 UUID，发送时回退到 `local_path` 模式。`url` 为服务端保存的附件绝对地址（v12 起有该列；老库/老服务端为空，读取与渲染时按 `{服务地址}/v1/files/{id}` 派生），跨设备同步来的附件只靠它取回文件。 |
-| `AppSetting` | 按用户保存的键值设置：`userId` + `key` 为联合主键，另有 `value`、`updatedAt`。主题和 FatAI 设备 ID 使用此表。 |
+| `AppSetting` | 按用户保存的键值设置：`userId` + `key` 为联合主键，另有 `value`、`updatedAt`。主题、FatAI 设备 ID 和本地模型配置（`local_model_*`，见「端侧本地 AI 路由」节）使用此表。 |
 | `SyncSequence` | 每个实体的本地单调序号，避免乱序操作覆盖。 |
 | `SyncOutbox` | 持久化同步任务：状态包括 `PENDING`、`SENDING`、`RETRYING`、`FAILED`，并记录重试次数及错误分类；同一实体的未发送任务会合并为最新状态，避免队列膨胀。 |
 

@@ -27,6 +27,18 @@ data class ChatUsage(
     val totalTokens: Int = 0
 )
 
+/**
+ * Where a model call may be served from.
+ *
+ * NONE (default) always goes to the cloud gateway. LOCAL_FIRST prefers the on-device local
+ * model engine and falls back to the cloud on failure or unavailability (used by memory
+ * extraction, where a local failure must not silently drop memory quality). LOCAL_ONLY never
+ * falls back to the cloud — its caller owns the fallback (the title service relies on the
+ * server's own title generation when the local path fails, so a cloud fallback here would
+ * double-bill the same title).
+ */
+enum class LocalRouteMode { NONE, LOCAL_FIRST, LOCAL_ONLY }
+
 data class ProviderConfig(
     val apiKey: String,
     val baseUrl: String,
@@ -38,5 +50,6 @@ data class ProviderConfig(
     val temperature: Float = 0.7f,
     val topP: Float = 1.0f,
     val systemPrompt: String? = null,
-    val thinkingEnabled: Boolean = false
+    val thinkingEnabled: Boolean = false,
+    val localRoute: LocalRouteMode = LocalRouteMode.NONE
 )

@@ -1,6 +1,7 @@
 package ai.fatai.feature.memory
 
 import ai.fatai.chat.ChatMessage
+import ai.fatai.chat.LocalRouteMode
 import ai.fatai.chat.ProviderConfig
 import ai.fatai.feature.model.ChatContext
 import ai.fatai.feature.model.ModelGateway
@@ -30,7 +31,7 @@ class UserMemoryExtractionService(
                     ChatMessage(role = "system", content = MEMORY_EXTRACTION_PROMPT),
                     ChatMessage(role = "user", content = "<user_input>\n$input\n</user_input>")
                 ),
-                config = config.copy(maxTokens = 160, temperature = 0f),
+                config = config.copy(maxTokens = 160, temperature = 0f, localRoute = LocalRouteMode.LOCAL_FIRST),
                 // Attribute the extraction's usage to the conversation for billing.
                 context = ChatContext(conversationId = conversationId)
             ).collect { chunk ->

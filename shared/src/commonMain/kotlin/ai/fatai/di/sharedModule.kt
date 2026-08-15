@@ -1,5 +1,7 @@
 package ai.fatai.di
 
+import ai.fatai.chat.OpenAICompatibleProvider
+import ai.fatai.chat.ProviderType
 import ai.fatai.database.Database
 import ai.fatai.network.provideHttpClient
 import ai.fatai.repo.ChatRepository
@@ -11,6 +13,8 @@ import ai.fatai.feature.memory.ConversationMemoryService
 import ai.fatai.feature.memory.UserMemoryExtractionService
 import ai.fatai.feature.model.FatAiServerModelGateway
 import ai.fatai.feature.model.FatAiServerSync
+import ai.fatai.feature.model.HttpLocalModelEngine
+import ai.fatai.feature.model.LocalFirstRouterGateway
 import ai.fatai.feature.model.ModelGateway
 import ai.fatai.feature.model.SyncOutboxStore
 import ai.fatai.feature.model.SyncRemoteStore
@@ -74,7 +78,12 @@ val sharedModule = module {
     single { ToolRegistry(DefaultTools.all(get(), get<DoclingDocumentTool>()), ToolExecutionPolicy(maxOutputCharacters = 24_000)) }
     single { ToolProviderAdapterRegistry(DefaultToolProviderAdapters.all()) }
 
-    single<ModelGateway> { FatAiServerModelGateway(get(), get()) }
+    single { FatAiServerModelGateway(get(), get()) }
+    single { OpenAICompatibleProvider(ProviderType.Custom, get()) }
+    single { HttpLocalModelEngine(get(), get()) }
+    // Chat turns (localRoute NONE) always reach the cloud gateway; lightweight tasks are
+    // dispatched by the router to the platform-registered LocalModelEngine.
+    single<ModelGateway> { LocalFirstRouterGateway(get(), get()) }
     single { FatAiServerSync(get(), get(), get(), get(), get()) }
     single<SyncMutationSink> { get<FatAiServerSync>() }
     single { ConversationMemoryService(get(), get()) }
