@@ -47,7 +47,11 @@ class SyncRemoteStore(
                     createdAt = now,
                     updatedAt = now,
                     isPinned = payload.bool("is_pinned").asLong(),
-                    isArchived = payload.bool("is_archived").asLong()
+                    isArchived = payload.bool("is_archived").asLong(),
+                    // Server-authoritative totals; absent on old servers → default 0. REPLACE
+                    // semantics mean a stale pull can never accumulate, only converge.
+                    totalPromptTokens = payload.long("total_prompt_tokens"),
+                    totalCompletionTokens = payload.long("total_completion_tokens")
                 )
             }
             "message" -> if (change.operation == "DELETE") {

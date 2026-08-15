@@ -17,11 +17,13 @@
 | 方法与路径 | 用途 | 请求参数 | 响应与客户端处理 |
 | --- | --- | --- | --- |
 | `POST /v1/auth/device` | 为当前本地设备取得 FatAI 服务访问令牌。首次调用会生成 UUID 并保存到本地设置 `fat_ai_server_device_id`。 | `device_id`：持久设备 UUID；`display_name`：`FatAI <currentUserId>`。 | JSON `{ "access_token": "..." }`。失败会终止后续依赖该令牌的请求。 |
-| `POST /v1/chat/stream` | 主聊天模型调用，采用 SSE 接收回答和工具调用。发送前会等待该 `model_configuration_id` 的上传完成。服务端负责上下文组装、工具执行、聊天直存与标题生成。 | `messages`：`[{ role, content }]`，仅原始对话轮次（客户端不再预组装上下文）；`model`：可空，优先使用当前配置模型；`model_configuration_id`：可空本地模型配置 ID；`temperature`：浮点采样温度；`thinking`：布尔，默认 `false`，为 `true` 时开启提供商思考模式（DeepSeek 等）并通过直连流式路径转发思考内容，为 `false` 时向提供商请求 `thinking: {"type": "disabled"}`；`workspace_id`/`conversation_id`：用于服务端按 DB 组装模板、工作空间指令与记忆，并作为聊天直存的归属；`response_language_tag`：响应语言标签（默认 `en`）；`tool_results`：可空字符串数组，客户端侧瞬态工具结果（如 Docling 提取内容），服务端追加在历史之后；`include_contextual_references`：默认为 `true`，附件分析置 `false`；`user_message_id`/`assistant_message_id`：客户端持有的消息 ID，服务端以此直存本轮对话；`tools`：模型可调用工具定义数组。每个工具包含 `name`、`description` 和 `parameters`；每个参数包含 `name`、`description`、`required`、`allowedValues`。 | 接收 `text/event-stream`：`message` 事件为 `{content?}` 与 `{reasoning_content?}` 的增量 JSON（二者可同时出现；思考模式开启时先推 `reasoning_content` 后推 `content`，关闭时仅推 `content`），客户端按字段分别追加思考内容与回答；`tool_call` 含 `{id?, name, arguments, sources?}`，`sources` 为服务端执行工具后返回的结构化来源（`[{ title, url }]`，已按 URL 跨轮次去重），客户端用于渲染来源区块；`done` 表示结束并携带 `{"sources": [...]}`——本次回答引用的服务端 RAG 来源，`[{title, kind, id}]`，`kind` 为 `memory` 或 `knowledge_document`（空数组表示未注入引用）。非 2xx 抛出异常。 |
+| `POST /v1/chat/stream` | 主聊天模型调用，采用 SSE 接收回答和工具调用。发送前会等待该 `model_configuration_id` 的上传完成。服务端负责上下文组装、工具执行、聊天直存与标题生成。 | `messages`：`[{ role, content }]`，仅原始对话轮次（客户端不再预组装上下文）；`model`：可空，优先使用当前配置模型；`model_configuration_id`：可空本地模型配置 ID；`temperature`：浮点采样温度；`thinking`：布尔，默认 `false`，为 `true` 时开启提供商思考模式（DeepSeek 等）并通过直连流式路径转发思考内容，为 `false` 时向提供商请求 `thinking: {"type": "disabled"}`；`workspace_id`/`conversation_id`：用于服务端按 DB 组装模板、工作空间指令与记忆，并作为聊天直存的归属；`response_language_tag`：响应语言标签（默认 `en`）；`tool_results`：可空字符串数组，客户端侧瞬态工具结果（如 Docling 提取内容），服务端追加在历史之后；`include_contextual_references`：默认为 `true`，附件分析置 `false`；`user_message_id`/`assistant_message_id`：客户端持有的消息 ID，服务端以此直存本轮对话；`tools`：模型可调用工具定义数组。每个工具包含 `name`、`description` 和 `parameters`；每个参数包含 `name`、`description`、`required`、`allowedValues`。 | 接收 `text/event-stream`：`message` 事件为 `{content?}` 与 `{reasoning_content?}` 的增量 JSON（二者可同时出现；思考模式开启时先推 `reasoning_content` 后推 `content`，关闭时仅推 `content`），客户端按字段分别追加思考内容与回答；`tool_call` 含 `{id?, name, arguments, sources?}`，`sources` 为服务端执行工具后返回的结构化来源（`[{ title, url }]`，已按 URL 跨轮次去重），客户端用于渲染来源区块；`done` 表示结束并携带 `{"sources": [...]}`——本次回答引用的服务端 RAG 来源，`[{title, kind, id}]`，`kind` 为 `memory` 或 `knowledge_document`（空数组表示未注入引用）；`done` 还可能携带 `usage: {prompt_tokens, completion_tokens, total_tokens}`——服务端对该轮全部模型调用（含工具轮）的合计，提供商未上报或断连时省略该字段，客户端据此在本地累加会话 token 用量。非 2xx 抛出异常。 |
 
 `/v1/chat/stream` 只发送上述字段。`ProviderConfig.maxTokens`、`topP`、`systemPrompt` 不会传给 FatAI 服务。上下文组装（系统提示词、启用模板、工作空间指令、记忆召回、历史截断）已迁移到服务端 `assemble_context`，客户端 `ContextEngine` 已移除；服务端同时绑定并执行它支持的 `tools`（当前为 `web_search` 与 `weather`），在单次 SSE 流内完成"模型 → 工具 → 模型"循环后输出最终回答。客户端当前向模型广告的工具只有 `web_search` 与 `weather`；calculator、text_transform、json、current_time、uuid 等本地工具不再暴露给模型。
 
 **聊天消息直存**：带 `conversation_id` 与 `assistant_message_id` 的聊天请求，服务端在流结束时把用户消息与助手回答直接写入服务端数据库并进入变更流（会话缺失时服务端自动补建）。客户端因此**不再**为聊天消息入队同步（`insertMessage(sync=false)`、`stopGeneration`/`continueGeneration` 同样只写本地缓存）；仅当流式调用失败时，客户端会把用户问题入队作为兜底。删除仍走 outbox（服务端 DELETE 采用"删即为胜"语义，不受直存 sequence 影响）。
+
+**Token 用量记账**：服务端是会话 token 总数的唯一权威。服务端对自己发起的每次模型调用（聊天轮次、标题生成、记忆提取/摘要等 auxiliary 调用）在 `token_usage_entries` 账本表记一行并累加进 `Conversation.total_prompt_tokens`/`total_completion_tokens`，随后经变更流同步到所有设备。客户端只在收到 `done.usage` 后用 `addConversationUsage` 本地累加以即时显示，**永不上传 token 值**（`ConversationPayload` 不含 token 字段，`addConversationUsage` 不入 outbox；服务端 `apply_sync_payload` 也会剥离会话 payload 中的 token 字段作为防御）。
 
 ### 文件上传(对象存储)
 
@@ -99,7 +101,7 @@
 | --- | --- |
 | `UserAccount` | 本地数据归属用户：`id`（PK）、`name`、`createdAt`、`updatedAt`。初始化时确保默认用户存在。 |
 | `ChatItem` | 聊天消息：`id`（PK）、`userId`、`conversationId`、`content`、`markdownDocument`、`sources`（来源 JSON：`[{label, url?}]`，用于消息来源 UI）、`type`（`Question`/`Answer`）、`contentType`、`createdAt`。`conversationId` 外键删除时级联删除。 |
-| `Conversation` | 会话：`id`（PK）、`userId`、`title`、`workspaceId`、`providerType`、`model`、创建/更新时间、`isPinned`、`isArchived`。 |
+| `Conversation` | 会话：`id`（PK）、`userId`、`title`、`workspaceId`、`providerType`、`model`、创建/更新时间、`isPinned`、`isArchived`、`totalPromptTokens`、`totalCompletionTokens`（服务端权威的累计 token 用量，v13 起有这两列；客户端本地累加用于即时显示，同步拉取按服务端值整体替换）。 |
 | `ApiKey` | 模型配置的非秘密元数据：`id`、`userId`、`providerType`、`name`、`apiKey`、`baseUrl`、`model`、`isActive`、`createdAt`。新代码写入空 `apiKey`，密钥上传至 FatAI 服务。 |
 | `Workspace` | 工作空间：`id`、`userId`、`name`、`systemPrompt`、创建/更新时间、`isArchived`。默认 Inbox ID 为 `inbox`。 |
 | `MemoryEntry` | 长短期记忆：`id`、`userId`、`scope`、`workspaceId?`、`conversationId?`、`kind`、`content`、时间、`isArchived`。 |
@@ -136,11 +138,12 @@
 | `selectArchivedConversations` | `ChatRepository.getArchivedConversations`。 | `userId`。 | 读取已归档会话，按更新时间倒序。 |
 | `searchConversations` | `ChatRepository.searchConversations`。 | `query`、`userId`。 | 对未归档会话标题执行 `LIKE '%query%'` 搜索。 |
 | `selectConversationById` | `ChatRepository.getConversationById`。 | `id`、`userId`。 | 读取一条会话。 |
-| `insertConversation` | `ChatRepository.createConversation`。 | `id`、`userId`、`title`、`workspaceId`、`providerType`、`model`、`createdAt`、`updatedAt`、`isPinned`、`isArchived`。 | 新建会话。 |
+| `insertConversation` | `ChatRepository.createConversation`。 | `id`、`userId`、`title`、`workspaceId`、`providerType`、`model`、`createdAt`、`updatedAt`、`isPinned`、`isArchived`、`totalPromptTokens`、`totalCompletionTokens`（新建时为 0）。 | 新建会话。 |
 | `updateConversationTitle` | `ChatRepository.updateConversationTitle`（用户手动重命名）。新会话标题由服务端在首轮聊天后异步用模型生成并经变更流同步。 | `title`、`updatedAt`、`id`、`userId`。 | 更新标题和会话时间。 |
 | `updateConversationPin` | `ChatRepository.toggleConversationPin`。 | `isPinned`、`updatedAt`、`id`、`userId`。 | 更新置顶状态和会话时间。 |
 | `updateConversationArchive` | `ChatRepository.toggleConversationArchive`。 | `isArchived`、`updatedAt`、`id`、`userId`。 | 归档或恢复会话并更新时间。 |
 | `updateConversationUpdatedAt` | `ChatRepository.insertMessage` 后调用。 | `updatedAt`、`id`、`userId`。 | 仅更新时间，用于排序。 |
+| `addConversationUsage` | `ChatRepository.addConversationUsage`，流完成收到 `done.usage` 后调用。 | `id`、`userId`、`promptTokens`、`completionTokens`。 | 累加会话 token 合计（纯 UPDATE，非 REPLACE）；刻意不更新会话时间、不入同步 outbox——服务端是权威计数并会经变更流整体替换回写。 |
 | `deleteConversation` | `ChatRepository.deleteConversation` 的第二步。 | `id`、`userId`。 | 删除会话记录。 |
 
 ### 模型配置
@@ -179,7 +182,7 @@
 | `deletePromptTemplate` | `PromptTemplateRepository.delete`。 | `id`、`userId`。 | 删除模板并进入同步 outbox。 |
 
 同步回写使用以下幂等 SQLDelight 查询：`upsertRemoteWorkspace`、`deleteRemoteWorkspace`、
-`upsertRemoteConversation`、`deleteRemoteConversation`、`upsertRemoteMessage`、
+`upsertRemoteConversation`（携带 `totalPromptTokens`/`totalCompletionTokens`，`INSERT OR REPLACE` 整体替换服务端权威值；老服务端缺字段时默认 0）、`deleteRemoteConversation`、`upsertRemoteMessage`、
 `deleteRemoteMessage`、`upsertRemoteMemory`、`deleteRemoteMemory`、
 `upsertRemotePromptTemplate`、`deleteRemotePromptTemplate`、`upsertRemoteApiKey`、
 `deleteRemoteApiKey`、`upsertRemoteFileAsset`、`deleteFileAsset` 和 `upsertSyncSequence`。

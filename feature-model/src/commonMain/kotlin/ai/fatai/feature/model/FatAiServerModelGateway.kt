@@ -2,6 +2,7 @@ package ai.fatai.feature.model
 
 import ai.fatai.chat.ChatMessage
 import ai.fatai.chat.ChatStreamChunk
+import ai.fatai.chat.ChatUsage
 import ai.fatai.chat.ProviderConfig
 import ai.fatai.feature.tools.ToolDefinition
 import ai.fatai.feature.tools.ProviderToolCall
@@ -129,7 +130,17 @@ class FatAiServerModelGateway(
                                 "PERF => first_event=${firstChunkAt ?: -1}ms " +
                                     "total=${now}ms tool_calls=${toolCalls.size} persisted=$persisted"
                             )
-                            emit(ChatStreamChunk(content = "", isDone = true, toolCalls = toolCalls.toList(), persisted = persisted))
+                            emit(
+                                ChatStreamChunk(
+                                    content = "",
+                                    isDone = true,
+                                    toolCalls = toolCalls.toList(),
+                                    persisted = persisted,
+                                    usage = donePayload.usage?.let {
+                                        ChatUsage(it.promptTokens, it.completionTokens, it.totalTokens)
+                                    }
+                                )
+                            )
                         }
                     }
                     line.isBlank() -> eventName = null
@@ -205,5 +216,13 @@ private data class ServerToolSource(
 @Serializable
 private data class ServerDoneEvent(
     val persisted: Boolean = true,
-    @SerialName("persist_error") val persistError: String? = null
+    @SerialName("persist_error") val persistError: String? = null,
+    val usage: ServerUsage? = null
+)
+
+@Serializable
+private data class ServerUsage(
+    @SerialName("prompt_tokens") val promptTokens: Int = 0,
+    @SerialName("completion_tokens") val completionTokens: Int = 0,
+    @SerialName("total_tokens") val totalTokens: Int = 0
 )

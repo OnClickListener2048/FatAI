@@ -35,6 +35,17 @@ import fatai.composeapp.generated.resources.pin
 import fatai.composeapp.generated.resources.unpin
 import org.jetbrains.compose.resources.stringResource
 
+/** Formats a cumulative token count compactly: 0 → "", 999 → "999", 1234 → "1.2k", 12345 → "12k". */
+private fun formatTokenCount(total: Long): String = when {
+    total <= 0 -> ""
+    total < 1_000 -> "$total"
+    total < 10_000 -> {
+        val tenths = (total + 50) / 100
+        "${tenths / 10}.${tenths % 10}k"
+    }
+    else -> "${(total + 500) / 1_000}k"
+}
+
 /**
  * One conversation row in the sidebar with its pin/archive/delete context menu.
  *
@@ -76,9 +87,13 @@ internal fun ConversationListItem(
                     maxLines = 1
                 )
                 Text(
-                    "${conv.providerType.displayName}  ${conv.model}",
+                    listOf(
+                        "${conv.providerType.displayName}  ${conv.model}",
+                        formatTokenCount(conv.totalPromptTokens + conv.totalCompletionTokens)
+                    ).filter { it.isNotBlank() }.joinToString("  ·  "),
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1
                 )
             }
             Box {

@@ -3,6 +3,7 @@ package ai.fatai.feature.memory
 import kotlinx.coroutines.flow.collect
 import ai.fatai.chat.ChatMessage
 import ai.fatai.chat.ProviderConfig
+import ai.fatai.feature.model.ChatContext
 import ai.fatai.feature.model.ModelGateway
 
 data class MemoryPolicy(
@@ -37,7 +38,12 @@ class ConversationMemoryService(
         )
         val summary = StringBuilder()
         var completed = false
-        modelGateway.stream(summaryPrompt, config.copy(maxTokens = policy.summaryMaxTokens, temperature = 0.2f)).collect { chunk ->
+        // Attribute the summary's usage to the conversation so the server can bill it correctly.
+        modelGateway.stream(
+            summaryPrompt,
+            config.copy(maxTokens = policy.summaryMaxTokens, temperature = 0.2f),
+            context = ChatContext(workspaceId = workspaceId, conversationId = conversationId)
+        ).collect { chunk ->
             if (completed) return@collect
             if (chunk.isDone) completed = true else summary.append(chunk.content)
         }

@@ -375,7 +375,7 @@ class AIChatViewModel(
             sync = false
         )
         screenModelScope.launch {
-            userMemoryExtractionService.rememberFromUserInput(userMsg.content, config)
+            userMemoryExtractionService.rememberFromUserInput(userMsg.content, config, conversationId)
         }
         fileAssetRepository.assignPendingToMessage(conversationId, userMsg.id)
         // Re-push attachment metadata now that the message id is known; the outbox coalesces

@@ -33,7 +33,11 @@ CREATE TABLE Conversation (
     createdAt INTEGER NOT NULL,
     updatedAt INTEGER NOT NULL,
     isPinned INTEGER NOT NULL DEFAULT 0,
-    isArchived INTEGER NOT NULL DEFAULT 0
+    isArchived INTEGER NOT NULL DEFAULT 0,
+    -- Server-authoritative cumulative token usage for bill reconciliation; the client only
+    -- accumulates locally for immediate display and never pushes these values.
+    totalPromptTokens INTEGER NOT NULL DEFAULT 0,
+    totalCompletionTokens INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE ApiKey (
@@ -175,8 +179,14 @@ selectConversationById:
 SELECT * FROM Conversation WHERE id = :id AND userId = :userId;
 
 insertConversation:
-INSERT INTO Conversation(id, userId, title, workspaceId, providerType, model, createdAt, updatedAt, isPinned, isArchived)
-VALUES (:id, :userId, :title, :workspaceId, :providerType, :model, :createdAt, :updatedAt, :isPinned, :isArchived);
+INSERT INTO Conversation(
+    id, userId, title, workspaceId, providerType, model, createdAt, updatedAt, isPinned, isArchived,
+    totalPromptTokens, totalCompletionTokens
+)
+VALUES (
+    :id, :userId, :title, :workspaceId, :providerType, :model, :createdAt, :updatedAt, :isPinned, :isArchived,
+    :totalPromptTokens, :totalCompletionTokens
+);
 
 updateConversationTitle:
 UPDATE Conversation SET title = :title, updatedAt = :updatedAt WHERE id = :id AND userId = :userId;
@@ -189,6 +199,12 @@ UPDATE Conversation SET isArchived = :isArchived, updatedAt = :updatedAt WHERE i
 
 updateConversationUpdatedAt:
 UPDATE Conversation SET updatedAt = :updatedAt WHERE id = :id AND userId = :userId;
+
+addConversationUsage:
+UPDATE Conversation
+SET totalPromptTokens = totalPromptTokens + :promptTokens,
+    totalCompletionTokens = totalCompletionTokens + :completionTokens
+WHERE id = :id AND userId = :userId;
 
 deleteConversation:
 DELETE FROM Conversation WHERE id = :id AND userId = :userId;
@@ -410,9 +426,13 @@ DELETE FROM Workspace WHERE id = :id AND userId = :userId;
 
 upsertRemoteConversation:
 INSERT OR REPLACE INTO Conversation(
-    id, userId, title, workspaceId, providerType, model, createdAt, updatedAt, isPinned, isArchived
+    id, userId, title, workspaceId, providerType, model, createdAt, updatedAt, isPinned, isArchived,
+    totalPromptTokens, totalCompletionTokens
 )
-VALUES (:id, :userId, :title, :workspaceId, :providerType, :model, :createdAt, :updatedAt, :isPinned, :isArchived);
+VALUES (
+    :id, :userId, :title, :workspaceId, :providerType, :model, :createdAt, :updatedAt, :isPinned, :isArchived,
+    :totalPromptTokens, :totalCompletionTokens
+);
 
 deleteRemoteConversation:
 DELETE FROM Conversation WHERE id = :id AND userId = :userId;

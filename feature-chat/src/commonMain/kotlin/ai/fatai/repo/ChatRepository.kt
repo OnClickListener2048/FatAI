@@ -26,7 +26,11 @@ data class Conversation(
     val createdAt: Long,
     val updatedAt: Long,
     val isPinned: Boolean,
-    val isArchived: Boolean
+    val isArchived: Boolean,
+    // Server-authoritative cumulative token usage; the client accumulates locally for
+    // immediate display but never pushes these values (see addConversationUsage).
+    val totalPromptTokens: Long = 0,
+    val totalCompletionTokens: Long = 0
 )
 
 data class ChatItem(
@@ -76,7 +80,9 @@ class ChatRepository(
             createdAt = time,
             updatedAt = time,
             isPinned = 0L,
-            isArchived = 0L
+            isArchived = 0L,
+            totalPromptTokens = 0L,
+            totalCompletionTokens = 0L
         )
         serverSync?.syncConversation(id, workspaceId, title, providerType.name, model, false, false)
         return Conversation(id, currentUser.currentUserId, title, workspaceId, providerType, model, time, time, false, false)
@@ -132,6 +138,24 @@ class ChatRepository(
 
     fun updateConversationTimestamp(id: String) {
         queries.updateConversationUpdatedAt(id = id, updatedAt = now(), userId = currentUser.currentUserId)
+    }
+
+    /**
+     * Accumulates one turn's token usage for immediate display.
+     *
+     * Deliberately does NOT bump the conversation timestamp and does NOT enqueue a sync op:
+     * token totals are server-authoritative (the server folds the same numbers into the
+     * conversation and pushes them back through the change stream), so pushing them here
+     * would double count.
+     */
+    fun addConversationUsage(conversationId: String, promptTokens: Int, completionTokens: Int) {
+        if (promptTokens <= 0 && completionTokens <= 0) return
+        queries.addConversationUsage(
+            id = conversationId,
+            userId = currentUser.currentUserId,
+            promptTokens = promptTokens.toLong(),
+            completionTokens = completionTokens.toLong()
+        )
     }
 
     fun getMessages(conversationId: String): List<ChatItem> {
@@ -249,5 +273,7 @@ private fun ai.fatai.database.sqldelight.Conversation.toConversation() = Convers
     createdAt = createdAt,
     updatedAt = updatedAt,
     isPinned = isPinned != 0L,
-    isArchived = isArchived != 0L
+    isArchived = isArchived != 0L,
+    totalPromptTokens = totalPromptTokens,
+    totalCompletionTokens = totalCompletionTokens
 )

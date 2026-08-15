@@ -3,6 +3,7 @@ package ai.fatai.viewmodel
 import ai.fatai.bean.ChatItemType
 import ai.fatai.bean.MessageContentType
 import ai.fatai.chat.ChatMessage
+import ai.fatai.chat.ChatUsage
 import ai.fatai.chat.ProviderConfig
 import ai.fatai.core.locale.currentLanguageTag
 import ai.fatai.feature.files.FileAsset
@@ -209,6 +210,12 @@ class ChatStreamManager(
             control = control
         )
         val toolCalls = result.toolCalls
+        // Fold the turn's usage into the conversation for immediate display. The server is the
+        // authoritative counter and syncs the same totals back; this is a local-only additive
+        // UPDATE (see ChatRepository.addConversationUsage) so it can never double count.
+        result.usage?.let { usage ->
+            chatRepository.addConversationUsage(request.conversationId, usage.promptTokens, usage.completionTokens)
+        }
         // When the server failed to persist the chat turn, enqueue the messages
         // via the outbox so other devices can still receive them.
         if (!result.persisted) {
@@ -256,6 +263,7 @@ class ChatStreamManager(
     ): StreamResult {
         var toolCalls = emptyList<ProviderToolCall>()
         var persisted = true
+        var usage: ChatUsage? = null
         var lastRenderedAt = 0L
         modelGateway.stream(
             messages = prompt,
@@ -283,9 +291,10 @@ class ChatStreamManager(
             if (chunk.isDone) {
                 toolCalls = chunk.toolCalls
                 persisted = chunk.persisted
+                usage = chunk.usage
             }
         }
-        return StreamResult(toolCalls, persisted)
+        return StreamResult(toolCalls, persisted, usage)
     }
 
     private fun completeAssistantResponse(request: StreamRequest, assistantMsg: ChatItem) {
@@ -355,7 +364,8 @@ class ChatStreamManager(
 
     private data class StreamResult(
         val toolCalls: List<ProviderToolCall>,
-        val persisted: Boolean
+        val persisted: Boolean,
+        val usage: ChatUsage? = null
     )
 
     private companion object {

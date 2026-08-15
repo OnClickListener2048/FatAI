@@ -2,6 +2,7 @@ package ai.fatai.feature.memory
 
 import ai.fatai.chat.ChatMessage
 import ai.fatai.chat.ProviderConfig
+import ai.fatai.feature.model.ChatContext
 import ai.fatai.feature.model.ModelGateway
 import kotlinx.coroutines.flow.collect
 
@@ -18,7 +19,7 @@ class UserMemoryExtractionService(
     private val memoryRepository: MemoryRepository,
     private val modelGateway: ModelGateway
 ) {
-    suspend fun rememberFromUserInput(input: String, config: ProviderConfig) {
+    suspend fun rememberFromUserInput(input: String, config: ProviderConfig, conversationId: String? = null) {
         if (input.isBlank()) return
 
         val response = StringBuilder()
@@ -29,7 +30,9 @@ class UserMemoryExtractionService(
                     ChatMessage(role = "system", content = MEMORY_EXTRACTION_PROMPT),
                     ChatMessage(role = "user", content = "<user_input>\n$input\n</user_input>")
                 ),
-                config = config.copy(maxTokens = 160, temperature = 0f)
+                config = config.copy(maxTokens = 160, temperature = 0f),
+                // Attribute the extraction's usage to the conversation for billing.
+                context = ChatContext(conversationId = conversationId)
             ).collect { chunk ->
                 if (completed) return@collect
                 if (chunk.isDone) completed = true else response.append(chunk.content)
