@@ -24,12 +24,6 @@ import ai.fatai.feature.workspace.WorkspaceRepository
 import ai.fatai.feature.settings.SettingsRepository
 import ai.fatai.feature.user.CurrentUserProvider
 import ai.fatai.feature.user.UserRepository
-import ai.fatai.feature.tools.DefaultTools
-import ai.fatai.feature.tools.DefaultToolProviderAdapters
-import ai.fatai.feature.tools.DoclingDocumentTool
-import ai.fatai.feature.tools.ToolProviderAdapterRegistry
-import ai.fatai.feature.tools.ToolExecutionPolicy
-import ai.fatai.feature.tools.ToolRegistry
 import org.koin.core.module.Module
 import org.koin.dsl.module
 
@@ -72,11 +66,6 @@ val sharedModule = module {
     single { SyncOutboxStore(get(), get()) }
     single { SyncRemoteStore(get(), get()) }
     single { FileAssetService(get(), accessToken = { get<FatAiServerSync>().accessToken() }) }
-    single { DoclingDocumentTool(get(), accessTokenProvider = { get<FatAiServerSync>().accessToken() }) }
-    // Docling conversion can produce richer Markdown than lightweight tools, while the registry
-    // still imposes a strict prompt-sized bound on every tool result.
-    single { ToolRegistry(DefaultTools.all(get(), get<DoclingDocumentTool>()), ToolExecutionPolicy(maxOutputCharacters = 24_000)) }
-    single { ToolProviderAdapterRegistry(DefaultToolProviderAdapters.all()) }
 
     single { FatAiServerModelGateway(get(), get()) }
     single { OpenAICompatibleProvider(ProviderType.Custom, get()) }

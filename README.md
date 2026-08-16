@@ -43,7 +43,7 @@ The application UI is Compose Multiplatform. SQLDelight drivers and Ktor engines
 | `feature-workspace` | Default Personal workspace, create/select/update/archive repository operations, workspace instructions. | Implemented; editing/archive UI is pending |
 | `feature-settings` | Persisted system/light/dark theme preference. | Implemented |
 | `feature-knowledge` | Gradle/KMP module scaffold only. | Not implemented |
-| `feature-tools` | Provider-neutral tool contracts, OpenAI-compatible schemas, local safe utilities, and an HTTP-backed web-search tool. | Implemented for the desktop/server local setup |
+| `feature-tools` | Removed — tool definitions and execution are server-owned (see Tool system). | Not in this repository |
 | `feature-agent` | Gradle/KMP module scaffold only. | Not implemented |
 | `shared` | Temporary Koin composition and platform bootstrap bridge while migrations are completed. | Compatibility layer; do not add new feature logic |
 | `composeApp` | Decompose root navigation, chat/settings UI, resources, platform entry points, and responsive layouts. | Implemented |
@@ -125,7 +125,7 @@ composeApp (Compose UI, Decompose root, responsive screens)
         ├── core (shared primitives)
         └── database (SQLDelight schema, migrations, platform drivers)
 
-feature-knowledge / feature-tools / feature-agent
+feature-knowledge / feature-agent
         └── KMP scaffolds reserved for V2 implementation
 ```
 

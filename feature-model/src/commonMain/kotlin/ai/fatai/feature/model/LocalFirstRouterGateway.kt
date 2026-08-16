@@ -4,7 +4,6 @@ import ai.fatai.chat.ChatMessage
 import ai.fatai.chat.ChatStreamChunk
 import ai.fatai.chat.LocalRouteMode
 import ai.fatai.chat.ProviderConfig
-import ai.fatai.feature.tools.ToolDefinition
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 
@@ -24,7 +23,6 @@ class LocalFirstRouterGateway(
     override suspend fun stream(
         messages: List<ChatMessage>,
         config: ProviderConfig,
-        tools: List<ToolDefinition>,
         context: ChatContext
     ): Flow<ChatStreamChunk> {
         if (config.localRoute != LocalRouteMode.NONE && localEngine.isAvailable) {
@@ -45,6 +43,6 @@ class LocalFirstRouterGateway(
             }
             println("LOCAL => ${config.localRoute} failed: ${localResult.exceptionOrNull()?.message} — cloud fallback")
         }
-        return serverGateway.stream(messages, config, tools, context)
+        return serverGateway.stream(messages, config, context)
     }
 }

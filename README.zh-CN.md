@@ -43,7 +43,7 @@ FatAI 是一个仍在持续建设中的 AI Assistant。项目采用 KMP Feature 
 | `feature-workspace` | 默认 Personal 工作区、创建/选择/更新/归档仓库操作与工作区指令。 | 已实现；编辑与归档 UI 待完成 |
 | `feature-settings` | 跟随系统/浅色/深色主题的持久化。 | 已实现 |
 | `feature-knowledge` | 仅有 Gradle/KMP 模块骨架。 | 未实现 |
-| `feature-tools` | Provider 无关的工具契约、OpenAI-compatible Schema、本地安全工具与 HTTP Web Search 工具。 | 已实现桌面端/本地 Server 链路 |
+| `feature-tools` | 已删除——工具定义与执行全部归服务端（见"工具系统"章节）。 | 本仓库已不含此模块 |
 | `feature-agent` | 仅有 Gradle/KMP 模块骨架。 | 未实现 |
 | `shared` | 在迁移期间提供 Koin 装配与平台启动兼容层。 | 兼容层；不要加入新的 Feature 逻辑 |
 | `composeApp` | Decompose 根路由、Chat/Settings UI、资源、平台入口与响应式布局。 | 已实现 |
@@ -125,7 +125,7 @@ composeApp（Compose UI、Decompose 根路由、响应式页面）
         ├── core（跨模块基础模型）
         └── database（SQLDelight Schema、迁移、平台 Driver）
 
-feature-knowledge / feature-tools / feature-agent
+feature-knowledge / feature-agent
         └── 为 V2 预留的 KMP 骨架
 ```
 

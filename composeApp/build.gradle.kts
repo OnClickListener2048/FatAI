@@ -92,7 +92,6 @@ kotlin {
             implementation(project(":feature-files"))
             implementation(project(":feature-prompt"))
             implementation(project(":feature-chat"))
-            implementation(project(":feature-tools"))
             implementation(project(":feature-settings"))
             implementation(project(":feature-user"))
             implementation(libs.landscapist.placeholder)

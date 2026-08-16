@@ -4,9 +4,8 @@ import ai.fatai.chat.ChatMessage
 import ai.fatai.chat.ChatStreamChunk
 import ai.fatai.chat.ChatUsage
 import ai.fatai.chat.ProviderConfig
-import ai.fatai.feature.tools.ToolDefinition
-import ai.fatai.feature.tools.ProviderToolCall
-import ai.fatai.feature.tools.ToolSource
+import ai.fatai.chat.ProviderToolCall
+import ai.fatai.chat.ToolSource
 import io.ktor.client.HttpClient
 import io.ktor.client.request.preparePost
 import io.ktor.client.request.setBody
@@ -31,9 +30,9 @@ const val DEFAULT_FAT_AI_SERVER_URL = "http://127.0.0.1:8080"
 /**
  * Streams model output from the FatAI FastAPI backend.
  *
- * Provider credentials are server-owned after the one-time configuration upload.
- * Tool definitions remain client-side for the transitional two-pass tool flow. The backend owns
- * external tool endpoints and will become the tool-call executor as the Agent migration lands.
+ * Provider credentials, tool definitions, and tool execution are all server-owned; the client
+ * sends only context hints and file references, and renders content, reasoning, and tool-call
+ * provenance (sources) from the server's SSE events.
  */
 class FatAiServerModelGateway(
     private val client: HttpClient,
@@ -43,7 +42,6 @@ class FatAiServerModelGateway(
     override suspend fun stream(
         messages: List<ChatMessage>,
         config: ProviderConfig,
-        tools: List<ToolDefinition>,
         context: ChatContext
     ): Flow<ChatStreamChunk> = flow {
         val preStart = TimeSource.Monotonic.markNow()
@@ -70,24 +68,16 @@ class FatAiServerModelGateway(
                         workspaceId = context.workspaceId,
                         conversationId = context.conversationId,
                         responseLanguageTag = context.responseLanguageTag,
-                        toolResults = context.toolResults,
+                        documents = context.documents.map { document ->
+                            ServerDocumentReference(
+                                fileId = document.fileId,
+                                displayName = document.displayName,
+                                mimeType = document.mimeType
+                            )
+                        },
                         includeContextualReferences = context.includeContextualReferences,
                         userMessageId = context.userMessageId,
-                        assistantMessageId = context.assistantMessageId,
-                        tools = tools.map { definition ->
-                            ServerToolDefinition(
-                                name = definition.name,
-                                description = definition.description,
-                                parameters = definition.parameters.map { parameter ->
-                                    ServerToolParameter(
-                                        name = parameter.name,
-                                        description = parameter.description,
-                                        required = parameter.required,
-                                        allowedValues = parameter.allowedValues.sorted()
-                                    )
-                                }
-                            )
-                        }
+                        assistantMessageId = context.assistantMessageId
                     )
                 )
             )
@@ -164,32 +154,23 @@ private data class ServerChatStreamRequest(
     @SerialName("workspace_id") val workspaceId: String? = null,
     @SerialName("conversation_id") val conversationId: String? = null,
     @SerialName("response_language_tag") val responseLanguageTag: String? = null,
-    @SerialName("tool_results") val toolResults: List<String> = emptyList(),
+    @SerialName("documents") val documents: List<ServerDocumentReference> = emptyList(),
     @SerialName("include_contextual_references") val includeContextualReferences: Boolean = true,
     @SerialName("user_message_id") val userMessageId: String? = null,
-    @SerialName("assistant_message_id") val assistantMessageId: String? = null,
-    val tools: List<ServerToolDefinition> = emptyList()
+    @SerialName("assistant_message_id") val assistantMessageId: String? = null
+)
+
+@Serializable
+private data class ServerDocumentReference(
+    @SerialName("file_id") val fileId: String,
+    @SerialName("display_name") val displayName: String,
+    @SerialName("mime_type") val mimeType: String
 )
 
 @Serializable
 private data class ServerStreamEvent(
     val content: String = "",
     @SerialName("reasoning_content") val reasoningContent: String = ""
-)
-
-@Serializable
-private data class ServerToolDefinition(
-    val name: String,
-    val description: String,
-    val parameters: List<ServerToolParameter>
-)
-
-@Serializable
-private data class ServerToolParameter(
-    val name: String,
-    val description: String,
-    val required: Boolean,
-    val allowedValues: List<String>
 )
 
 @Serializable

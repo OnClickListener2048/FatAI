@@ -2,18 +2,23 @@ package ai.fatai.feature.model
 
 import kotlinx.coroutines.flow.Flow
 import ai.fatai.chat.ChatMessage
-import ai.fatai.chat.ChatProvider
 import ai.fatai.chat.ChatStreamChunk
 import ai.fatai.chat.ProviderConfig
-import ai.fatai.feature.tools.ToolDefinition
+
+/** An attachment referenced by its server-assigned file id; the bytes never leave the server. */
+data class ChatDocument(
+    val fileId: String,
+    val displayName: String,
+    val mimeType: String
+)
 
 /** Server-side context assembly hints. Absent fields keep the request free of context layers. */
 data class ChatContext(
     val workspaceId: String? = null,
     val conversationId: String? = null,
     val responseLanguageTag: String? = null,
-    /** Formatted, transient tool results (e.g. document reads) appended after history by the server. */
-    val toolResults: List<String> = emptyList(),
+    /** Uploaded attachments converted to Markdown by the server before the model stream. */
+    val documents: List<ChatDocument> = emptyList(),
     /** Disables templates, workspace instructions and memories for isolated work (attachment analysis). */
     val includeContextualReferences: Boolean = true,
     /** Client-owned id the server persists the user turn under. */
@@ -27,16 +32,6 @@ interface ModelGateway {
     suspend fun stream(
         messages: List<ChatMessage>,
         config: ProviderConfig,
-        tools: List<ToolDefinition> = emptyList(),
         context: ChatContext = ChatContext()
     ): Flow<ChatStreamChunk>
-}
-
-class ChatProviderModelGateway(private val provider: ChatProvider) : ModelGateway {
-    override suspend fun stream(
-        messages: List<ChatMessage>,
-        config: ProviderConfig,
-        tools: List<ToolDefinition>,
-        context: ChatContext
-    ): Flow<ChatStreamChunk> = provider.chat(messages, config, tools)
 }

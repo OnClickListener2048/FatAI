@@ -5,7 +5,7 @@ plugins { alias(libs.plugins.kotlinMultiplatform); alias(libs.plugins.androidLib
 kotlin {
     androidTarget { compilerOptions { jvmTarget.set(JvmTarget.JVM_17) } }
     iosArm64(); iosSimulatorArm64(); jvm()
-    sourceSets { commonMain.dependencies { implementation(project(":core")); implementation(project(":feature-model")); implementation(project(":feature-tools")); implementation(project(":feature-memory")) } }
+    sourceSets { commonMain.dependencies { implementation(project(":core")); implementation(project(":feature-model")); implementation(project(":feature-memory")) } }
 }
 
 android { namespace = "ai.fatai.feature.agent"; compileSdk = libs.versions.android.compileSdk.get().toInt(); defaultConfig { minSdk = libs.versions.android.minSdk.get().toInt() } }

@@ -1,20 +1,11 @@
 package ai.fatai.chat
 
-import kotlinx.coroutines.flow.Flow
-import ai.fatai.feature.tools.ToolDefinition
-
 interface ChatProvider {
     val type: ProviderType
 
-    suspend fun chat(
-        messages: List<ChatMessage>,
-        config: ProviderConfig,
-        tools: List<ToolDefinition> = emptyList()
-    ): Flow<ChatStreamChunk>
-
+    /** Synchronous, non-streaming completion (the on-device local model path only). */
     suspend fun chatSync(
         messages: List<ChatMessage>,
-        config: ProviderConfig,
-        tools: List<ToolDefinition> = emptyList()
+        config: ProviderConfig
     ): Result<String>
 }

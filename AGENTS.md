@@ -2,7 +2,7 @@
 
 ## Project Structure & Module Organization
 
-FatAI is a Kotlin Multiplatform Compose application targeting Android, desktop JVM, and iOS. `composeApp/` owns UI, navigation, and platform application setup. Business capabilities are split into feature modules: `feature-chat/`, `feature-model/`, `feature-prompt/`, `feature-memory/`, `feature-files/`, `feature-workspace/`, `feature-settings/`, `feature-user/`, and `feature-tools/`. Shared primitives live in `core/`; SQLDelight schemas and drivers live in `database/`; Koin bootstrap is in `shared/`; `server/` is a sample Ktor service. Kotlin sources use `src/commonMain`, with platform code in `androidMain`, `jvmMain`, and `iosMain`.
+FatAI is a Kotlin Multiplatform Compose application targeting Android, desktop JVM, and iOS. `composeApp/` owns UI, navigation, and platform application setup. Business capabilities are split into feature modules: `feature-chat/`, `feature-model/`, `feature-prompt/`, `feature-memory/`, `feature-files/`, `feature-workspace/`, `feature-settings/`, and `feature-user/`. Shared primitives live in `core/`; SQLDelight schemas and drivers live in `database/`; Koin bootstrap is in `shared/`; the FastAPI backend lives in a separate repository (`C:\Users\wang2\fat-ai-server`) and owns tool definitions/execution. Kotlin sources use `src/commonMain`, with platform code in `androidMain`, `jvmMain`, and `iosMain`.
 
 ## Build, Test, and Development Commands
 

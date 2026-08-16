@@ -1,7 +1,6 @@
 package ai.fatai.chat
 
 import kotlinx.serialization.Serializable
-import ai.fatai.feature.tools.ProviderToolCall
 
 @Serializable
 data class ChatMessage(

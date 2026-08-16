@@ -45,7 +45,7 @@ FatAI is a Kotlin Multiplatform (KMP) AI chat workspace targeting Android, Deskt
 composeApp (Compose UI, Decompose navigation, platform entry points)
     ├── shared (centralized Koin DI wiring; temporary bridge, don't add new logic here)
     │       ├── feature-user → feature-chat, feature-model, feature-prompt,
-    │       │   feature-memory, feature-files, feature-workspace, feature-settings, feature-tools
+    │       │   feature-memory, feature-files, feature-workspace, feature-settings
     │       ├── core (shared primitives: ChatItemType, MessageContentType, ProviderType,
     │       │          SyncMutationSink, CurrentLanguage)
     │       └── database (SQLDelight schema v11, 10 migrations, platform drivers)
@@ -74,23 +74,23 @@ Single `RootComponent` with a `StackNavigation<Configuration>`: `Configuration.C
 
 Despite what the README's "Context pipeline" section describes, the `ContextEngine`, ordered `PromptProvider` extension points, and baseline policy **do not exist in this Kotlin codebase**. `feature-prompt/` contains only `PromptTemplateRepository` (CRUD + sync of user-defined prompt templates). The README's documented pipeline order (baseline policy → templates → workspace instruction → memory → file metadata → history) is assembled by the external FastAPI server at `POST /v1/chat/stream`.
 
-The client sends a `ChatContext` with `workspaceId`, `conversationId`, `responseLanguageTag`, `toolResults`, and `includeContextualReferences` — the server uses these to look up templates, workspace instructions, memories, and assemble the full prompt. The `PromptTemplateRepository.enabledFor()` method has **no callers** in the client.
+The client sends a `ChatContext` with `workspaceId`, `conversationId`, `responseLanguageTag`, `documents` (attachment file-id references; the server docling-converts them before streaming), and `includeContextualReferences` — the server uses these to look up templates, workspace instructions, memories, and assemble the full prompt. The `PromptTemplateRepository.enabledFor()` method has **no callers** in the client.
 
 ### Chat flow (client-owned IDs, server persistence)
 
 1. `AIChatViewModel.sendMessage` creates the conversation if needed, inserts the user message locally with `sync = false`, kicks off async memory extraction.
-2. `streamChat` builds history from local `ChatItem`s, executes `docling_document_read` locally for attachments, constructs a `ChatContext`, then calls `modelGateway.stream(...)`.
+2. `streamChat` builds history from local `ChatItem`s, sends attachment file ids via `ChatContext.documents` (the server docling-converts them before streaming), then calls `modelGateway.stream(...)`.
 3. Chunks are **throttled to 16ms per render frame** (`awaitNextStreamFrame`) to prevent StateFlow from collapsing intermediate text.
 4. The **server persists turns during streaming** under client-owned message IDs. On stream completion, the client writes the local cache via `insertMessage(..., sync = false, id = assistantMsg.id)` — chat messages are NOT enqueued through the sync outbox.
 5. `stopGeneration` cancels the job, persists the partial answer locally (server saves it on disconnect under the same ID). `continueGeneration` appends "Please continue from where you left off." and streams again.
 6. On stream failure, the catch block enqueues the user question as a fallback sync operation.
 
-### Two streaming paths (both yield `Flow<ChatStreamChunk>`)
+### Model streaming (server-owned tools)
 
-- **`FatAiServerModelGateway`** (active, DI-selected): SSE from `POST /v1/chat/stream` with Bearer token. Named events: `message` (content/reasoning_content), `tool_call` (server already executed the tool, surfaces structured `sources`), `done`. API keys are uploaded to the server and never sent with chat requests — the client sends `modelConfigurationId` instead.
-- **`OpenAICompatibleProvider`** (fallback): Direct SSE from `POST {base}/chat/completions`. Manual SSE line parsing, accumulates tool-call deltas per `index`, emits `ProviderToolCall` on `finish_reason == "tool_calls"` or `[DONE]`. Handles both `content`/`text` and `reasoning_content`/`reasoning` delta fields (OpenAI + DeepSeek).
+- **`FatAiServerModelGateway`** (DI-selected): SSE from `POST /v1/chat/stream` with Bearer token. Named events: `message` (content/reasoning_content), `tool_call` (server already executed the tool, surfaces structured `sources`), `done`. Provider credentials, tool definitions, and tool execution are all server-owned — the client only sends `modelConfigurationId`, messages, and attachment file ids (`ChatContext.documents`).
+- **`OpenAICompatibleProvider`** is no longer a chat path: it only serves `chatSync` (non-streaming) for the on-device local model engine (memory extraction / title generation).
 
-The `ChatProvider` interface in `feature-model` is the extension point for new providers — implement `chat(messages, config, tools): Flow<ChatStreamChunk>`.
+`ModelGateway.stream(messages, config, context): Flow<ChatStreamChunk>` in `feature-model` is the chat extension point; the `ChatProvider` interface is the local-engine extension point — implement `chatSync(messages, config): Result<String>`.
 
 ### Server sync (bidirectional, outbox pattern)
 
@@ -111,11 +111,9 @@ The JVM driver (`database/src/jvmMain`) has an elaborate legacy-migration path: 
 
 `feature-chat` contains a hand-rolled `MarkdownParser` and `MarkdownDocument` AST (NOT a library AST). Streaming-aware: unclosed `**`/`*`/`~~` markers render the remaining run in its eventual style so mid-stream text doesn't reflow. Persisted via `MarkdownDocumentCodec` (length-prefixed binary codec, `FATAI_MD_1` header).
 
-### Tool system (feature-tools)
+### Tool system (server-owned)
 
-Platform-neutral contracts: `Tool` (definition + `isModelCallable` + `execute`), `ToolRegistry` (validates args, enforces `ToolExecutionPolicy` with 24k char output cap). `ToolProviderAdapter` translates neutral definitions to provider wire schemas (`OpenAICompatibleToolAdapter`, `GeminiToolAdapter`, `AnthropicToolAdapter`).
-
-Built-in tools (all `isModelCallable = false`): `CalculatorTool` (hand-written recursive-descent arithmetic parser), `TextTransformTool`, `JsonTool`, `CurrentTimeTool`, `UuidTool`. Server-backed tools (model-callable): `WebSearchTool`, `WeatherTool` (both POST to `http://127.0.0.1:8080/v1/tools/*`). `DoclingDocumentTool` (document→Markdown, `isModelCallable = false` — model must never choose local file paths).
+There is no client-side tool module — `feature-tools/` was removed. Tool definitions and execution live in the FastAPI server: it binds its canonical schemas (`CANONICAL_TOOLS`: `web_search`, `weather`) during the chat stream and emits `tool_call` SSE events carrying structured `sources`. Attachment analysis is server-side too: the client only sends `ChatContext.documents` (file-id references), and the server docling-converts each referenced `FileAsset` before the model streams. The client keeps only rendering concerns: source chips (`MessageSource`), assistant activity labels (`activity()` in ChatStreamManager), and dedupe by `url ?: label`.
 
 ### Memory system (feature-memory)
 
@@ -140,7 +138,7 @@ Chat screen uses `BoxWithConstraints`: below 840.dp → `ModalNavigationDrawer` 
 - `feature-user` depends only on `:database` — it is the leaf module.
 - All other feature modules depend on `:feature-user` via `CurrentUserProvider`.
 - `feature-memory` additionally depends on `:feature-model` (for LLM-driven extraction/summarization).
-- `feature-tools` depends on `:core` (ProviderType) and Ktor.
+- Tool definitions and execution are server-owned; the client has no tool module (see Tool system).
 - Keep common code platform-neutral; use `expect`/`actual` only at platform boundaries.
 - Prefer feature-local APIs and depend on `core` abstractions rather than reaching across feature modules.
 

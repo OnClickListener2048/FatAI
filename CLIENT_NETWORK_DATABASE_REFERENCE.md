@@ -10,16 +10,16 @@
 - FatAI 服务默认地址为 `http://127.0.0.1:8080`。构造函数允许替换 `serverUrl`。
 - 除设备登录外，FatAI 服务请求都带 `Authorization: Bearer <access_token>`；客户端在每次请求前调用设备登录接口获取令牌。
 - 与 FatAI 服务交互的请求体均为 JSON。同步请求先写入 SQLite `SyncOutbox`，后台按实体序号发送并自动重试；任务状态、失败码和错误信息均持久化，应用重启后会恢复未完成任务。
-- 工具请求不带认证头。模型厂商直连使用其配置的 `baseUrl` 与 `Authorization: Bearer <apiKey>`。
+- 模型厂商直连（仅本地引擎 `chatSync`）使用其配置的 `baseUrl` 与 `Authorization: Bearer <apiKey>`。
 
 ### FatAI 服务认证与聊天
 
 | 方法与路径 | 用途 | 请求参数 | 响应与客户端处理 |
 | --- | --- | --- | --- |
 | `POST /v1/auth/device` | 为当前本地设备取得 FatAI 服务访问令牌。首次调用会生成 UUID 并保存到本地设置 `fat_ai_server_device_id`。 | `device_id`：持久设备 UUID；`display_name`：`FatAI <currentUserId>`。 | JSON `{ "access_token": "..." }`。失败会终止后续依赖该令牌的请求。 |
-| `POST /v1/chat/stream` | 主聊天模型调用，采用 SSE 接收回答和工具调用。发送前会等待该 `model_configuration_id` 的上传完成。服务端负责上下文组装、工具执行、聊天直存与标题生成。 | `messages`：`[{ role, content }]`，仅原始对话轮次（客户端不再预组装上下文）；`model`：可空，优先使用当前配置模型；`model_configuration_id`：可空本地模型配置 ID；`temperature`：浮点采样温度；`thinking`：布尔，默认 `false`，为 `true` 时开启提供商思考模式（DeepSeek 等）并通过直连流式路径转发思考内容，为 `false` 时向提供商请求 `thinking: {"type": "disabled"}`；`workspace_id`/`conversation_id`：用于服务端按 DB 组装模板、工作空间指令与记忆，并作为聊天直存的归属；`response_language_tag`：响应语言标签（默认 `en`）；`tool_results`：可空字符串数组，客户端侧瞬态工具结果（如 Docling 提取内容），服务端追加在历史之后；`include_contextual_references`：默认为 `true`，附件分析置 `false`；`user_message_id`/`assistant_message_id`：客户端持有的消息 ID，服务端以此直存本轮对话；`tools`：模型可调用工具定义数组。每个工具包含 `name`、`description` 和 `parameters`；每个参数包含 `name`、`description`、`required`、`allowedValues`。 | 接收 `text/event-stream`：`message` 事件为 `{content?}` 与 `{reasoning_content?}` 的增量 JSON（二者可同时出现；思考模式开启时先推 `reasoning_content` 后推 `content`，关闭时仅推 `content`），客户端按字段分别追加思考内容与回答；`tool_call` 含 `{id?, name, arguments, sources?}`，`sources` 为服务端执行工具后返回的结构化来源（`[{ title, url }]`，已按 URL 跨轮次去重），客户端用于渲染来源区块；`done` 表示结束并携带 `{"sources": [...]}`——本次回答引用的服务端 RAG 来源，`[{title, kind, id}]`，`kind` 为 `memory` 或 `knowledge_document`（空数组表示未注入引用）；`done` 还可能携带 `usage: {prompt_tokens, completion_tokens, total_tokens}`——服务端对该轮全部模型调用（含工具轮）的合计，提供商未上报或断连时省略该字段，客户端据此在本地累加会话 token 用量。非 2xx 抛出异常。 |
+| `POST /v1/chat/stream` | 主聊天模型调用，采用 SSE 接收回答和工具调用。发送前会等待该 `model_configuration_id` 的上传完成。服务端负责上下文组装、工具定义与执行、附件 Docling 转换、聊天直存与标题生成。 | `messages`：`[{ role, content }]`，仅原始对话轮次（客户端不再预组装上下文）；`model`：可空，优先使用当前配置模型；`model_configuration_id`：可空本地模型配置 ID；`temperature`：浮点采样温度；`thinking`：布尔，默认 `false`，为 `true` 时开启提供商思考模式（DeepSeek 等），为 `false` 时向提供商请求 `thinking: {"type": "disabled"}`；`workspace_id`/`conversation_id`：用于服务端按 DB 组装模板、工作空间指令与记忆，并作为聊天直存的归属；`response_language_tag`：响应语言标签（默认 `en`）；`documents`：附件文件引用数组 `[{ file_id, display_name, mime_type }]`，仅引用已上传文件（`file_id` 为 `POST /v1/files` 返回的资产 id），服务端在流式开始前逐文件 Docling 转换为 Markdown 并注入上下文，转换失败按工具失败处理并继续；`include_contextual_references`：默认为 `true`，附件分析置 `false`；`user_message_id`/`assistant_message_id`：客户端持有的消息 ID，服务端以此直存本轮对话。 | 接收 `text/event-stream`：`message` 事件为 `{content?}` 与 `{reasoning_content?}` 的增量 JSON（二者可同时出现；思考模式开启时先推 `reasoning_content` 后推 `content`，关闭时仅推 `content`），客户端按字段分别追加思考内容与回答；`tool_call` 含 `{id?, name, arguments, sources?}`——服务端在模型流前先为每个附件发一个合成 `tool_call`（`name` 为 `docling_document_read`，`sources` 为 `[{title}]` 无 url，避免客户端按 url 去重塌缩），流中再发模型工具调用，`sources` 为服务端执行工具后返回的结构化来源（`[{ title, url }]`），客户端用于渲染来源区块；`done` 表示结束并携带 `{"sources": [...]}`——本次回答引用的服务端 RAG 来源，`[{title, kind, id}]`，`kind` 为 `memory` 或 `knowledge_document`（空数组表示未注入引用）；`done` 还可能携带 `usage: {prompt_tokens, completion_tokens, total_tokens}`——服务端对该轮全部模型调用（含工具轮）的合计，提供商未上报或断连时省略该字段，客户端据此在本地累加会话 token 用量。非 2xx 抛出异常。 |
 
-`/v1/chat/stream` 只发送上述字段。`ProviderConfig.maxTokens`、`topP`、`systemPrompt` 不会传给 FatAI 服务。上下文组装（系统提示词、启用模板、工作空间指令、记忆召回、历史截断）已迁移到服务端 `assemble_context`，客户端 `ContextEngine` 已移除；服务端同时绑定并执行它支持的 `tools`（当前为 `web_search` 与 `weather`），在单次 SSE 流内完成"模型 → 工具 → 模型"循环后输出最终回答。客户端当前向模型广告的工具只有 `web_search` 与 `weather`；calculator、text_transform、json、current_time、uuid 等本地工具不再暴露给模型。
+`/v1/chat/stream` 只发送上述字段。`ProviderConfig.maxTokens`、`topP`、`systemPrompt` 不会传给 FatAI 服务。上下文组装（系统提示词、启用模板、工作空间指令、记忆召回、历史截断）已迁移到服务端 `assemble_context`，客户端 `ContextEngine` 已移除；工具定义与执行全部归服务端：服务端持有规范工具 schema（`CANONICAL_TOOLS`：`web_search` 与 `weather`），在单次 SSE 流内完成"模型 → 工具 → 模型"循环后输出最终回答。客户端不发送任何工具定义（`tools` 字段已删除），也不再存在本地工具模块（`feature-tools/` 已移除；calculator、text_transform、json、current_time、uuid 等旧本地工具不再存在）。
 
 **聊天消息直存**：带 `conversation_id` 与 `assistant_message_id` 的聊天请求，服务端在流结束时把用户消息与助手回答直接写入服务端数据库并进入变更流（会话缺失时服务端自动补建）。客户端因此**不再**为聊天消息入队同步（`insertMessage(sync=false)`、`stopGeneration`/`continueGeneration` 同样只写本地缓存）；仅当流式调用失败时，客户端会把用户问题入队作为兜底。删除仍走 outbox（服务端 DELETE 采用"删即为胜"语义，不受直存 sequence 影响）。
 
@@ -31,8 +31,8 @@
 
 | 方法与路径 | 用途 | 请求参数 | 响应与客户端处理 |
 | --- | --- | --- | --- |
-| `POST /v1/files` | multipart 上传用户选择的文件。成功返回的 `id` 会作为本地 `FileAsset.id`（见数据库节），返回的 `url` 会作为 `FileAsset.url`（老服务端可能缺失该字段，客户端按 `{服务地址}/v1/files/{id}` 派生）。上传失败时 `attachFile` 改为使用 `local-` 前缀的本地 id，并在发送时回退到 `docling_document_read` 的 `local_path` 模式。 | `file`：multipart 文件部分（`filename`、`Content-Type`）；查询参数 `workspace_id?`、`conversation_id?`。 | `{ id, display_name, storage_path, url, ... }`，`ignoreUnknownKeys` 解析 `id`、`display_name` 与 `url`；非 2xx 抛 `FileUploadException`。 |
-| `POST /v1/files/{file_id}/read` | 按 `file_id` 读取已上传文件并转 Markdown（服务端自行读存储，需鉴权）。由 `DoclingDocumentTool` 的 `file_id` 模式调用。 | 无请求体；路径参数 `file_id`。 | `{ displayName, markdown }`；错误 `{ code, message }`。 |
+| `POST /v1/files` | multipart 上传用户选择的文件。成功返回的 `id` 会作为本地 `FileAsset.id`（见数据库节，也是聊天请求 `documents[].file_id` 引用的值），返回的 `url` 会作为 `FileAsset.url`（老服务端可能缺失该字段，客户端按 `{服务地址}/v1/files/{id}` 派生）。上传失败时客户端直接拒绝该附件并提示用户重试：不落库、不进入附件列表，也不存在 `local-` 占位。 | `file`：multipart 文件部分（`filename`、`Content-Type`）；查询参数 `workspace_id?`、`conversation_id?`。 | `{ id, display_name, storage_path, url, ... }`，`ignoreUnknownKeys` 解析 `id`、`display_name` 与 `url`；非 2xx 抛 `FileUploadException`。 |
+| `POST /v1/files/{file_id}/read` | 按 `file_id` 读取已上传文件并转 Markdown（服务端自行读存储，需鉴权）。现为服务端内部调用：聊天流式开始前由 `read_chat_documents` 逐文档使用，客户端不再直连该接口。 | 无请求体；路径参数 `file_id`。 | `{ displayName, markdown }`；错误 `{ code, message }`。 |
 | `GET /v1/files/{file_id}` | 按 `file_id` 下载已上传文件的原始字节（附件下载功能）。三端统一：客户端先经 `FileAssetService.download` 拉取字节，再通过 FileKit 弹系统保存对话框（Android SAF / JVM 文件对话框 / iOS 文档选择器）。`local-` 前缀的本地附件未上传服务端，下载时直接复制 `localPath` 文件。图片附件渲染也走该接口（Coil 带 Bearer 头直载，利用内存/磁盘缓存）。 | 无请求体；路径参数 `file_id`，需 Bearer 令牌。 | 原始文件字节（`Content-Type` 为上传时的 MIME）；非 2xx 抛异常。 |
 
 ### FatAI 服务同步接口
@@ -60,28 +60,15 @@
 
 服务端 REST 写接口（workspaces、conversations、messages、memories、prompt-templates、model-configurations、settings、files）也会以服务端自增 sequence 写入同一条变更流，因此通过 REST 或服务端生成产生的数据同样能被增量拉取到所有设备。客户端收到的 `401` 会作废缓存令牌并重新获取；启动时 outbox 中 `FAILED` 任务会转为 `RETRYING` 重试一次。同步协议中 `DELETE` 操作由服务端无条件应用（删即为胜），避免聊天直存的服务端 sequence 导致客户端删除被误拒。
 
-**附件（`file_asset`）也走同一变更流**：上传成功或删除时，`AttachmentManager` 通过 outbox 以 `entity_type="file_asset"` 入队 `UPSERT`/`DELETE`；发送消息后 `AIChatViewModel` 重新入队一次以补充 `message_id`（outbox 按实体合并，只保留最新状态）。payload 为 `workspace_id?`、`conversation_id?`、`message_id?`、`display_name`、`mime_type`、`size_bytes`、`url`。其他设备拉取后本地仅存元数据与 `url`，图片经 Coil 直载渲染、文件经 `FileAssetService.download` 下载，`local-` 前缀的本地失败回退附件不参与同步。
+**附件（`file_asset`）也走同一变更流**：上传成功或删除时，`AttachmentManager` 通过 outbox 以 `entity_type="file_asset"` 入队 `UPSERT`/`DELETE`；发送消息后 `AIChatViewModel` 重新入队一次以补充 `message_id`（outbox 按实体合并，只保留最新状态）。payload 为 `workspace_id?`、`conversation_id?`、`message_id?`、`display_name`、`mime_type`、`size_bytes`、`url`。其他设备拉取后本地仅存元数据与 `url`，图片经 Coil 直载渲染、文件经 `FileAssetService.download` 下载。历史遗留的 `local-` 前缀行不参与同步（新代码上传失败不再落库，直接拒绝附件）。
 
-### 本地工具服务接口
+### OpenAI 兼容模型直连接口（仅 `chatSync`）
 
-下列接口默认使用同一个 `http://127.0.0.1:8080` 服务地址，但各 Tool 可在构造时替换。工具执行失败会转为 `ToolResult.Failure`，不抛出到聊天 UI。
-
-| 方法与路径 | 用途 | JSON 请求参数 | 响应与约束 |
-| --- | --- | --- | --- |
-| `POST /v1/tools/search` | 公共 Web 搜索，结果会作为可引用的工具上下文。 | `query`：非空查询词；`maxResults`：1 到 10，默认 5。 | `{ query, results: [{ title, snippet, url, source }] }`。空结果会返回“未找到”文本。 |
-| `POST /v1/tools/weather` | 查询指定地点的天气或预报资料。 | `location`：非空城市/地区/国家；`maxResults`：1 到 5，默认 3。 | `{ location, results: [{ title, snippet, url, source }] }`。空结果会返回“未找到”文本。 |
-| `POST /v1/tools/document-read` | 通过 Docling 抽取用户主动选择的文件或图片为 Markdown。该 Tool 不暴露给模型，因此模型不能传入任意本地路径。两种模式：`file_id`（已上传文件，带 Bearer 令牌调 `POST /v1/files/{file_id}/read`，见"文件上传"节）与 `local_path`（旧桌面迁移模式，仅服务端 `ALLOW_LOCAL_DOCUMENT_PATHS=true` 时可用）。 | `file_id`：服务端存储的文件 id（与 `local_path` 二选一）；`localPath`：用户选择的本地路径；`displayName`：文件名；`mimeType`：MIME 类型。后两者与二者之一不能为空。 | 成功：`{ displayName, markdown }`；错误：`{ code, message }`。抽取 Markdown 会作为附件上下文进入后续聊天。 |
-
-### OpenAI 兼容模型直连接口
-
-`OpenAICompatibleProvider` 仍保留，但默认依赖注入不使用它；只有显式改为 `ChatProviderModelGateway` 时才会直接调用模型厂商。目标 URL 为 `{baseUrl}/chat/completions`，`baseUrl` 去除尾随 `/` 后拼接。默认配置见 `ProviderType`：OpenAI、DeepSeek、Gemini、Claude、OpenRouter、Ollama 和 Custom；其中类本身按 OpenAI Chat Completions 协议编码，接入方需确认其 `baseUrl` 兼容该协议。
+`OpenAICompatibleProvider` 只提供同步、非流式 `chatSync`，供 `HttpLocalModelEngine`（本地 Ollama / cactus / LM Studio）做记忆提取与标题生成；聊天主路径不再直连模型厂商，流式 `chat()` 路径已随工具收归服务端而删除。目标 URL 为 `{baseUrl}/chat/completions`，`baseUrl` 去除尾随 `/` 后拼接。默认配置见 `ProviderType`：OpenAI、DeepSeek、Gemini、Claude、OpenRouter、Ollama 和 Custom；其中类本身按 OpenAI Chat Completions 协议编码，接入方需确认其 `baseUrl` 兼容该协议。
 
 | 方法与路径 | 用途 | 请求头 | JSON 请求参数 | 响应处理 |
 | --- | --- | --- | --- | --- |
-| `POST {baseUrl}/chat/completions` | 流式模型对话与工具调用。 | `Authorization: Bearer <apiKey>`、`Content-Type: application/json; charset=UTF-8`、`Accept: text/event-stream`。连接超时 30 秒；请求/套接字超时 120 秒。 | `model`；`messages`：`[{role, content}]`；`stream: true`；`max_tokens`；`temperature`；`top_p`；可选 `tools`（OpenAI function 格式）；工具非空时 `tool_choice: "auto"`。 | 支持 SSE 与普通 JSON。SSE 读取 `data:` 行：`[DONE]` 结束；增量支持 `content`/`text` 与 `reasoning_content`/`reasoning`；工具调用按 `index` 合并。 |
-| `POST {baseUrl}/chat/completions` | 同步模型调用，仅用于 `chatSync`。 | `Authorization: Bearer <apiKey>`、`Content-Type: application/json; charset=UTF-8`。 | 与上行相同，但 `stream: false`。 | 读取 JSON `choices[0].message.content`；异常包装为 `Result.failure`。 |
-
-`thinking` 字段定义在请求模型中，但当前客户端不会为它赋值。直连响应中的 token usage 已有数据类定义，但当前没有映射进 `ChatStreamChunk`。
+| `POST {baseUrl}/chat/completions` | 同步模型调用（`chatSync`），本地轻量任务。 | `Authorization: Bearer <apiKey>`、`Content-Type: application/json; charset=UTF-8`。 | `model`；`messages`：`[{role, content}]`；`stream: false`；`max_tokens`；`temperature`；`top_p`。不带任何工具、思考或用法字段。 | 读取 JSON `choices[0].message.content`；异常包装为 `Result.failure`。 |
 
 ### 端侧本地 AI 路由（`LocalFirstRouterGateway`）
 
@@ -132,7 +119,7 @@
 | `Workspace` | 工作空间：`id`、`userId`、`name`、`systemPrompt`、创建/更新时间、`isArchived`。默认 Inbox ID 为 `inbox`。 |
 | `MemoryEntry` | 长短期记忆：`id`、`userId`、`scope`、`workspaceId?`、`conversationId?`、`kind`、`content`、时间、`isArchived`。 |
 | `PromptTemplate` | 提示词模板：`id`、`userId`、`name`、`content`、`workspaceId?`、`priority`、`isEnabled`、时间。 |
-| `FileAsset` | 已选附件的本地元数据：`id`、`userId`、`workspaceId?`、`conversationId?`、`messageId?`、文件名、MIME、`localPath`、`sizeBytes`、`url`、`createdAt`。文件内容不写入数据库。`id` 在附件上传成功后为服务端返回的资产 id（用于 `file_id` 读取）；上传失败时使用 `local-` 前缀的本地 UUID，发送时回退到 `local_path` 模式。`url` 为服务端保存的附件绝对地址（v12 起有该列；老库/老服务端为空，读取与渲染时按 `{服务地址}/v1/files/{id}` 派生），跨设备同步来的附件只靠它取回文件。 |
+| `FileAsset` | 已选附件的本地元数据：`id`、`userId`、`workspaceId?`、`conversationId?`、`messageId?`、文件名、MIME、`localPath`、`sizeBytes`、`url`、`createdAt`。文件内容不写入数据库。`id` 在附件上传成功后为服务端返回的资产 id（聊天请求 `documents` 用它引用文件）；上传失败不落库（客户端直接拒绝附件并提示重试）。`local-` 前缀只可能来自旧版本遗留的 DB 行，发送前在 `ChatStreamManager` 与 `AIChatViewModel` 中被过滤。`url` 为服务端保存的附件绝对地址（v12 起有该列；老库/老服务端为空，读取与渲染时按 `{服务地址}/v1/files/{id}` 派生），跨设备同步来的附件只靠它取回文件。 |
 | `AppSetting` | 按用户保存的键值设置：`userId` + `key` 为联合主键，另有 `value`、`updatedAt`。主题、FatAI 设备 ID 和本地模型配置（`local_model_*`，见「端侧本地 AI 路由」节）使用此表。 |
 | `SyncSequence` | 每个实体的本地单调序号，避免乱序操作覆盖。 |
 | `SyncOutbox` | 持久化同步任务：状态包括 `PENDING`、`SENDING`、`RETRYING`、`FAILED`，并记录重试次数及错误分类；同一实体的未发送任务会合并为最新状态，避免队列膨胀。 |
@@ -233,7 +220,7 @@ Android/iOS 使用各自平台 SQLite 沙盒路径，验收步骤相同：清除
 | --- | --- | --- | --- |
 | `selectFilesForConversation` | `FileAssetRepository.forConversation`。 | `conversationId`、`userId`。 | 按创建时间正序读取会话全部附件。 |
 | `selectPendingFilesForConversation` | `FileAssetRepository.pendingForConversation`。 | `conversationId`、`userId`。 | 读取尚未关联消息（`messageId IS NULL`）的待发送附件。 |
-| `insertFileAsset` | `FileAssetRepository.attach`。`attach` 新增 `id` 参数：默认生成 UUID；上传成功后传入服务端资产 id，失败时传入 `local-` 前缀 id。`url` 来自上传响应（为空则 `''`）。 | `id`、`userId`、`workspaceId?`、`conversationId?`、`messageId?`、`displayName`、`mimeType`、`localPath`、`sizeBytes`、`url`、`createdAt`。 | 保存本地附件元数据。 |
+| `insertFileAsset` | `FileAssetRepository.attach`。`attach` 新增 `id` 参数：上传成功后传入服务端资产 id（上传失败不调用——附件被拒绝并提示用户重试）。`url` 来自上传响应（为空则 `''`）。 | `id`、`userId`、`workspaceId?`、`conversationId?`、`messageId?`、`displayName`、`mimeType`、`localPath`、`sizeBytes`、`url`、`createdAt`。 | 保存本地附件元数据。 |
 | `assignPendingFilesToMessage` | `FileAssetRepository.assignPendingToMessage`，发送用户消息后调用。 | `messageId`、`conversationId`、`userId`。 | 将该会话所有待发送附件关联到新消息。 |
 | `upsertRemoteFileAsset` | `SyncRemoteStore` 应用 `file_asset` 变更流（跨设备同步的附件）。 | `id`、`userId`、`workspaceId?`、`conversationId?`、`messageId?`、`displayName`、`mimeType`、`localPath=''`、`sizeBytes`、`url`、`createdAt`。 | `INSERT OR REPLACE` 写入同步来的附件元数据；`localPath` 固定为空，取回文件只走 `url`。 |
 | `deleteFileAsset` | `FileAssetRepository.delete`、`SyncRemoteStore` 的 `file_asset` DELETE。 | `id`、`userId`。 | 删除附件元数据；不会删除 `localPath` 指向的物理文件。 |

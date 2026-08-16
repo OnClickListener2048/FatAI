@@ -10,8 +10,9 @@ import kotlin.uuid.Uuid
 
 /**
  * Owns the file-attachment flow: uploads the picked file to the server (S3-like semantics)
- * with progress reporting and falls back to a [LOCAL_ATTACHMENT_PREFIX] id when the upload
- * fails, so the legacy local-path read path still works.
+ * with progress reporting. A failed upload rejects the attachment with an error toast so the
+ * user can retry the pick; there is no local-path fallback — the server only reads files it
+ * stores.
  */
 class AttachmentManager(
     private val fileAssetService: FileAssetService,
@@ -26,8 +27,8 @@ class AttachmentManager(
      * Attaches a user-selected file and uploads it in the background.
      *
      * On success the FileAsset is stored under the server-assigned id, so later document reads
-     * reference the file by id only. On failure the file is attached under a [LOCAL_ATTACHMENT_PREFIX]
-     * id and the legacy local-path read path is used instead.
+     * reference the file by id only. On failure the attachment is rejected with an error toast
+     * and nothing is persisted — the user retries the pick themselves.
      *
      * While an upload is in flight, the send button stays disabled ([ChatScreenState.uploads]).
      *
@@ -74,10 +75,15 @@ class AttachmentManager(
                     }
                 )
             } catch (_: Exception) {
-                onToast("File upload failed, using the local path instead.")
-                null
+                // Upload failed: reject the attachment outright and tell the user to retry.
+                // Nothing is persisted and nothing reaches the conversation.
+                onToast("Attachment upload failed, please retry.")
+                onState(
+                    getState().copy(uploads = getState().uploads.filterNot { it.id == uploadId })
+                )
+                return@launch
             }
-            val assetId = uploaded?.id ?: (LOCAL_ATTACHMENT_PREFIX + Uuid.random().toString())
+            val assetId = uploaded.id
             fileAssetRepository.attach(
                 displayName = displayName,
                 mimeType = mimeType,
@@ -86,22 +92,20 @@ class AttachmentManager(
                 workspaceId = getState().currentWorkspaceId,
                 conversationId = conversationId,
                 id = assetId,
-                url = uploaded?.url ?: ""
+                url = uploaded.url
             )
-            if (uploaded != null) {
-                // Mirror the metadata so other devices can fetch the bytes through the
-                // server URL; older servers omit it and the client derives it instead.
-                serverSync.syncFileAsset(
-                    id = assetId,
-                    workspaceId = getState().currentWorkspaceId,
-                    conversationId = conversationId,
-                    messageId = null,
-                    displayName = displayName,
-                    mimeType = mimeType,
-                    sizeBytes = sizeBytes,
-                    url = uploaded.url.ifBlank { "${fileAssetService.serverBaseUrl}/v1/files/$assetId" }
-                )
-            }
+            // Mirror the metadata so other devices can fetch the bytes through the
+            // server URL; older servers omit it and the client derives it instead.
+            serverSync.syncFileAsset(
+                id = assetId,
+                workspaceId = getState().currentWorkspaceId,
+                conversationId = conversationId,
+                messageId = null,
+                displayName = displayName,
+                mimeType = mimeType,
+                sizeBytes = sizeBytes,
+                url = uploaded.url.ifBlank { "${fileAssetService.serverBaseUrl}/v1/files/$assetId" }
+            )
             onState(
                 getState().copy(
                     attachments = fileAssetRepository.pendingForConversation(conversationId),
@@ -113,7 +117,7 @@ class AttachmentManager(
 
     fun removeAttachment(id: String) {
         fileAssetRepository.delete(id)
-        // Local-only fallback attachments never reached the server, nothing to delete there.
+        // Legacy local-only rows never reached the server, nothing to delete there.
         if (!id.startsWith(LOCAL_ATTACHMENT_PREFIX)) serverSync.deleteFileAsset(id)
         val conversationId = getState().currentConversationId ?: return
         onState(getState().copy(attachments = fileAssetRepository.pendingForConversation(conversationId)))

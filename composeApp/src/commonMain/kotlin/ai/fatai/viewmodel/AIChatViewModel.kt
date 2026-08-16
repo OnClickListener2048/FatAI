@@ -23,7 +23,6 @@ import ai.fatai.feature.files.FileAssetRepository
 import ai.fatai.feature.files.FileAssetService
 import ai.fatai.feature.memory.ConversationMemoryService
 import ai.fatai.feature.memory.UserMemoryExtractionService
-import ai.fatai.feature.tools.ToolRegistry
 import ai.fatai.feature.workspace.WorkspaceRepository
 import ai.fatai.feature.user.CurrentUserProvider
 import ai.fatai.repo.ChatItem
@@ -58,7 +57,6 @@ class AIChatViewModel(
     private val conversationMemoryService: ConversationMemoryService,
     private val conversationTitleService: ConversationTitleService,
     private val userMemoryExtractionService: UserMemoryExtractionService,
-    private val toolRegistry: ToolRegistry,
     private val currentUser: CurrentUserProvider,
     private val serverSync: FatAiServerSync,
     private val fileAssetService: FileAssetService
@@ -82,7 +80,6 @@ class AIChatViewModel(
     private val chatStreamManager = ChatStreamManager(
         chatRepository = chatRepository,
         modelGateway = modelGateway,
-        toolRegistry = toolRegistry,
         conversationMemoryService = conversationMemoryService,
         conversationTitleService = conversationTitleService,
         currentUser = currentUser,
@@ -386,7 +383,7 @@ class AIChatViewModel(
         fileAssetRepository.assignPendingToMessage(conversationId, userMsg.id)
         // Re-push attachment metadata now that the message id is known; the outbox coalesces
         // this with the attach-time op, so only the message-linked version is sent. Local-only
-        // fallback attachments (upload failed) never reach the server.
+        // rows from older builds never reach the server.
         pendingAttachments.filter { !it.id.startsWith(LOCAL_ATTACHMENT_PREFIX) }.forEach { asset ->
             serverSync.syncFileAsset(
                 id = asset.id,
@@ -511,7 +508,6 @@ class AIChatViewModel(
                 assistantMessageId = Uuid.random().toString(),
                 history = if (isAttachmentAnalysis) history.takeLast(1) else history,
                 config = config,
-                includeTools = true,
                 attachments = attachments,
                 includeContextualReferences = !isAttachmentAnalysis,
                 userMessageId = messages.lastOrNull { it.type == ChatItemType.Question }?.id,

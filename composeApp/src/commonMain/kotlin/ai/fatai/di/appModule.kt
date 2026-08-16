@@ -12,7 +12,7 @@ val appModule = module {
     single { ConversationTitleService(get(), get()) }
     single {
         println("AIChatViewModel")
-        AIChatViewModel(get(), get(), get(), get(), get(), get(), get(), get(), get(), get(), get(), get())
+        AIChatViewModel(get(), get(), get(), get(), get(), get(), get(), get(), get(), get(), get())
     }
 }
 

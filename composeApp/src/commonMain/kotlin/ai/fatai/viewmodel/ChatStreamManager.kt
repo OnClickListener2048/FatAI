@@ -5,17 +5,14 @@ import ai.fatai.bean.MessageContentType
 import ai.fatai.chat.ChatMessage
 import ai.fatai.chat.ChatUsage
 import ai.fatai.chat.ProviderConfig
+import ai.fatai.chat.ProviderToolCall
 import ai.fatai.core.locale.currentLanguageTag
 import ai.fatai.feature.files.FileAsset
 import ai.fatai.feature.memory.ConversationMemoryService
 import ai.fatai.feature.model.ChatContext
+import ai.fatai.feature.model.ChatDocument
 import ai.fatai.feature.model.FatAiServerSync
 import ai.fatai.feature.model.ModelGateway
-import ai.fatai.feature.tools.ProviderToolCall
-import ai.fatai.feature.tools.ToolCall
-import ai.fatai.feature.tools.ToolExecution
-import ai.fatai.feature.tools.ToolRegistry
-import ai.fatai.feature.tools.ToolResult
 import ai.fatai.feature.user.CurrentUserProvider
 import ai.fatai.feature.workspace.INBOX_WORKSPACE_ID
 import ai.fatai.repo.ChatItem
@@ -51,8 +48,7 @@ class StreamRequest(
     val assistantMessageId: String,
     val history: List<ChatMessage>,
     val config: ProviderConfig,
-    val includeTools: Boolean,
-    /** Attachments converted via docling before streaming; empty for the continue path. */
+    /** Attachments read by the server (docling) before streaming; empty for the continue path. */
     val attachments: List<FileAsset> = emptyList(),
     /** False for attachment analysis so the server skips contextual references. */
     val includeContextualReferences: Boolean = true,
@@ -77,7 +73,6 @@ class StreamRequest(
 class ChatStreamManager(
     private val chatRepository: ChatRepository,
     private val modelGateway: ModelGateway,
-    private val toolRegistry: ToolRegistry,
     private val conversationMemoryService: ConversationMemoryService,
     private val conversationTitleService: ConversationTitleService,
     private val currentUser: CurrentUserProvider,
@@ -146,36 +141,28 @@ class ChatStreamManager(
     ) {
         var assistantMsg = initialAssistantMsg
         val isAttachmentAnalysis = request.attachments.isNotEmpty()
-        val documentExecutions = if (request.attachments.isEmpty()) {
+        val documents = if (request.attachments.isEmpty()) {
             emptyList()
         } else {
             onState(getState().copy(assistantActivity = AssistantActivity.UsingTool))
-            request.attachments.map { attachment ->
-                val arguments = if (attachment.id.startsWith(LOCAL_ATTACHMENT_PREFIX)) {
-                    mapOf(
-                        "local_path" to attachment.localPath,
-                        "display_name" to attachment.displayName,
-                        "mime_type" to attachment.mimeType
-                    )
-                } else {
-                    mapOf(
-                        "file_id" to attachment.id,
-                        "display_name" to attachment.displayName,
-                        "mime_type" to attachment.mimeType
+            // Legacy rows from the pre-upload flow carry local- ids that never reached the
+            // server; skip them so the server never sees a file reference it cannot resolve.
+            request.attachments
+                .filter { !it.id.startsWith(LOCAL_ATTACHMENT_PREFIX) }
+                .map { attachment ->
+                    ChatDocument(
+                        fileId = attachment.id,
+                        displayName = attachment.displayName,
+                        mimeType = attachment.mimeType
                     )
                 }
-                toolRegistry.execute(ToolCall("docling_document_read", arguments))
-            }.also {
-                onState(getState().copy(assistantActivity = AssistantActivity.Thinking))
-            }
         }
-        val toolResults = documentExecutions.map { execution -> formatToolResult(execution) }
         val prompt = if (isAttachmentAnalysis) request.history.takeLast(1) else request.history
         val context = ChatContext(
             workspaceId = getState().currentWorkspaceId,
             conversationId = request.conversationId,
             responseLanguageTag = currentLanguageTag(),
-            toolResults = toolResults,
+            documents = documents,
             includeContextualReferences = request.includeContextualReferences,
             userMessageId = request.userMessageId,
             assistantMessageId = request.assistantMessageId
@@ -184,9 +171,9 @@ class ChatStreamManager(
             prompt = prompt,
             config = request.config,
             context = context,
-            includeTools = request.includeTools,
             onContent = { content ->
                 if (content.isNotEmpty()) {
+                    moveToThinkingWhenUsingTool()
                     assistantMsg = assistantMsg.copy(
                         content = assistantMsg.content + content,
                         isLoading = false
@@ -196,6 +183,7 @@ class ChatStreamManager(
             },
             onReasoning = { reasoningContent ->
                 if (reasoningContent.isNotEmpty()) {
+                    moveToThinkingWhenUsingTool()
                     assistantMsg = assistantMsg.copy(
                         reasoningContent = assistantMsg.reasoningContent + reasoningContent,
                         isLoading = false
@@ -232,16 +220,15 @@ class ChatStreamManager(
             }
         }
         if (!control.stopRequested) {
-            val serverToolExecutions = toolCalls.map { call ->
-                ToolExecution(
-                    call = ToolCall(call.name, call.arguments),
-                    // The server executes the tool and returns structured sources.
-                    result = ToolResult.Success("", sources = call.sources)
-                )
-            }
-            val referencedExecutions = documentExecutions + serverToolExecutions
-            if (referencedExecutions.isNotEmpty()) {
-                assistantMsg = assistantMsg.withToolSources(referencedExecutions)
+            // The server executes every tool (including the pre-stream docling reads) and
+            // surfaces the result sources on its tool_call events; dedupe by url so the same
+            // page attached by two searches still shows a single chip.
+            val sources = toolCalls
+                .flatMap { it.sources }
+                .distinctBy { it.url ?: it.label }
+                .map { MessageSource(label = it.label, url = it.url) }
+            if (sources.isNotEmpty()) {
+                assistantMsg = assistantMsg.copy(sources = sources)
                 onUpdateMessage(assistantMsg)
             }
             completeAssistantResponse(request, assistantMsg)
@@ -256,7 +243,6 @@ class ChatStreamManager(
         prompt: List<ChatMessage>,
         config: ProviderConfig,
         context: ChatContext = ChatContext(),
-        includeTools: Boolean,
         onContent: suspend (String) -> Unit,
         onReasoning: suspend (String) -> Unit = {},
         onToolCalls: (List<ProviderToolCall>) -> Unit = {},
@@ -269,7 +255,6 @@ class ChatStreamManager(
         modelGateway.stream(
             messages = prompt,
             config = config,
-            tools = if (includeTools) toolRegistry.definitions() else emptyList(),
             context = context
         ).collect { chunk ->
             if (control.stopRequested) return@collect
@@ -349,27 +334,18 @@ class ChatStreamManager(
         return Clock.System.now().toEpochMilliseconds()
     }
 
-    private fun formatToolResult(execution: ToolExecution): String = buildString {
-        appendLine("Tool: ${execution.call.toolName}")
-        when (val result = execution.result) {
-            is ToolResult.Success -> appendLine(result.content)
-            is ToolResult.Failure -> appendLine("Tool failed (${result.code}): ${result.message}")
+    /** The server streams docling events before the model; switch the indicator to Thinking
+     *  once real content or reasoning arrives so the UsingTool label is not stuck. */
+    private fun moveToThinkingWhenUsingTool() {
+        if (getState().assistantActivity == AssistantActivity.UsingTool) {
+            onState(getState().copy(assistantActivity = AssistantActivity.Thinking))
         }
-    }.trimEnd()
+    }
 
     private fun List<ProviderToolCall>.activity(): AssistantActivity = when {
         any { it.name == "weather" } -> AssistantActivity.CheckingWeather
         any { it.name == "web_search" } -> AssistantActivity.Searching
         else -> AssistantActivity.UsingTool
-    }
-
-    private fun ChatItem.withToolSources(executions: List<ToolExecution>): ChatItem {
-        val sources = executions
-            .flatMap { execution -> (execution.result as? ToolResult.Success)?.sources.orEmpty() }
-            .distinctBy { source -> source.url ?: source.label }
-            .map { source -> MessageSource(label = source.label, url = source.url) }
-        if (sources.isEmpty()) return this
-        return copy(sources = sources)
     }
 
     private data class StreamResult(
