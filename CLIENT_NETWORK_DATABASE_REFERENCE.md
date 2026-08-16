@@ -95,8 +95,7 @@
 
 本地引擎 `LocalModelEngine` 由各平台 `platformModule` 注册：
 
-- **Android**：`NeedleLocalModelEngine` 内嵌 needle 引擎（`libneedle.a` 静态库经 JNI 壳 `libneedle_jni.so` 加载随包分发的 `needle2.cact`，仅 arm64-v8a，API 24+；x86_64 模拟器经路由回退云端）。needle2 是 tool-calling 模型，每次初始化声明单一 `respond(text)` 工具，system+user 内容并入 input 文本；返回的 `function_calls[0].arguments.text` 即答案，空调用/解析失败 → `Result.failure` → 路由回退。模型随 APK 分发，无下载流程。设置 `local_model_engine=http` 时委托 `HttpLocalModelEngine`。
-- **JVM / iOS**：`HttpLocalModelEngine` —— 经 `OpenAICompatibleProvider.chatSync` 直连任意 OpenAI-compatible 本地服务（cactus serve / Ollama / LM Studio；`chatSync` 现显式设置 30s 请求/10s 连接/30s 套接字超时，防挂起本地服务卡死调用方）。
+- **Android / JVM / iOS**：均为 `HttpLocalModelEngine` —— 经 `OpenAICompatibleProvider.chatSync` 直连任意 OpenAI-compatible 本地服务（cactus serve / Ollama / LM Studio；`chatSync` 现显式设置 30s 请求/10s 连接/30s 套接字超时，防挂起本地服务卡死调用方）。客户端不再内置端侧模型引擎；轻量任务若需端侧能力，由 server 侧承担（见下方标题生成）。
 
 本地调用不经过 FatAI server：不产生 `token_usage_entries` 账本行、不进入侧边栏 token 统计（省 token 的可见效果）；云端回退时与既有行为完全一致。
 
@@ -105,11 +104,10 @@
 | 设置键 | 含义 |
 | --- | --- |
 | `local_model_enabled` | `"true"`/`"false"` 总开关 |
-| `local_model_engine` | `embedded`（默认，Android）或 `http` |
-| `local_model_base_url` | HTTP 模式的本地服务地址（如 `http://localhost:11434`；cactus serve 请用非 8080 端口） |
-| `local_model_name` | HTTP 模式的模型名；embedded 模式固定为 needle2（随包分发，无需配置） |
+| `local_model_base_url` | 本地服务地址（如 `http://localhost:11434`；cactus serve 请用非 8080 端口） |
+| `local_model_name` | 本地服务模型名 |
 
-客户端标题生成：首轮回复完成后 `ConversationTitleService.generateIfNeeded` 以 `LOCAL_ONLY` 路由本地生成标题（≤30 字符、与消息同语言、无引号/Markdown），经 `ChatRepository.updateConversationTitle`（ChatRepository.kt:111，自带 outbox 同步）推送到 server；失败静默，server 的 `generate_title_in_background` 在标题仍为默认值（空/`New Chat`/`New conversation`）时自行兜底生成，不与云端重复计费。`updateConversationTitle` 由此获得首个调用点。
+客户端标题生成：首轮回复完成后 `ConversationTitleService.generateIfNeeded` 以 `LOCAL_ONLY` 路由本地 HTTP 引擎生成标题（≤30 字符、与消息同语言、无引号/Markdown），经 `ChatRepository.updateConversationTitle`（ChatRepository.kt:111，自带 outbox 同步）推送到 server；失败静默，server 的 `generate_title_in_background` 在标题仍为默认值（空/`New Chat`/`New conversation`）时自行兜底生成，不与云端重复计费。server 兜底路径现以本地 needle2 引擎优先（`app/services/local_needle.py`，Windows cactus-needle wheel，声明单一 `set_title` 工具取 `function_calls[0].arguments.title`），拒绝/未安装时回退云端模型；needle2 标题不记云端 token usage。`updateConversationTitle` 由此获得首个调用点。
 
 ### HTTP 客户端与未实现接口
 

@@ -57,13 +57,10 @@ import ai.fatai.repo.ApiKeyRepository
 import ai.fatai.repo.ApiKeyInfo
 import ai.fatai.feature.settings.SettingsRepository
 import ai.fatai.feature.settings.ThemeMode
-import ai.fatai.feature.model.LOCAL_MODEL_ENGINE_EMBEDDED
-import ai.fatai.feature.model.LOCAL_MODEL_ENGINE_HTTP
 import ai.fatai.feature.model.LocalModelEngine
 import ai.fatai.feature.model.LocalSpeedResult
 import ai.fatai.feature.model.SETTING_LOCAL_MODEL_BASE_URL
 import ai.fatai.feature.model.SETTING_LOCAL_MODEL_ENABLED
-import ai.fatai.feature.model.SETTING_LOCAL_MODEL_ENGINE
 import ai.fatai.feature.model.SETTING_LOCAL_MODEL_NAME
 import ai.fatai.feature.memory.MemoryEntry
 import ai.fatai.feature.memory.MemoryRepository
@@ -105,8 +102,7 @@ class AISettingsScreen {
         var editingMemory by remember { mutableStateOf<MemoryEntry?>(null) }
         var newMemoryContent by remember { mutableStateOf("") }
         var editMemoryContent by remember { mutableStateOf("") }
-        // The embedded needle2 engine is Android-only; desktop and iOS expose the HTTP engine,
-        // so the engine-mode dropdown is hidden there (see supportsEmbeddedLocalModel()).
+        // The local model engine is the OpenAI-compatible HTTP engine on every platform.
         val localModelEngine = koinInject<LocalModelEngine>()
 
         // Reload memories every time the screen opens and when remote changes arrive.
@@ -794,9 +790,6 @@ private fun LocalModelSection(
     scope: CoroutineScope
 ) {
     var enabled by remember { mutableStateOf(settingsRepo.getValue(SETTING_LOCAL_MODEL_ENABLED) == "true") }
-    var engineMode by remember {
-        mutableStateOf(settingsRepo.getValue(SETTING_LOCAL_MODEL_ENGINE) ?: LOCAL_MODEL_ENGINE_EMBEDDED)
-    }
     var baseUrl by remember { mutableStateOf(settingsRepo.getValue(SETTING_LOCAL_MODEL_BASE_URL) ?: "") }
     var modelName by remember { mutableStateOf(settingsRepo.getValue(SETTING_LOCAL_MODEL_NAME) ?: "") }
     var benchmarking by remember { mutableStateOf(false) }
@@ -889,87 +882,27 @@ private fun LocalModelSection(
                 }
                 Spacer(Modifier.height(10.dp))
 
-                if (supportsEmbeddedLocalModel()) {
-                    SettingsDropdownField(
-                        label = stringResource(Res.string.local_model_engine),
-                        options = listOf(
-                            LOCAL_MODEL_ENGINE_EMBEDDED to stringResource(Res.string.local_model_engine_embedded),
-                            LOCAL_MODEL_ENGINE_HTTP to stringResource(Res.string.local_model_engine_http)
-                        ),
-                        selected = engineMode,
-                        onSelect = { selectedEngine ->
-                            engineMode = selectedEngine
-                            settingsRepo.putValue(SETTING_LOCAL_MODEL_ENGINE, selectedEngine)
-                        }
-                    )
-                    Spacer(Modifier.height(10.dp))
-                }
-
-                if (engineMode == LOCAL_MODEL_ENGINE_EMBEDDED && supportsEmbeddedLocalModel()) {
-                    // The bundled needle2 engine ships only for arm64-v8a; x86_64 emulators
-                    // automatically fall back to the cloud router.
-                    Text(
-                        stringResource(Res.string.local_model_arm64_only),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Spacer(Modifier.height(10.dp))
-                } else {
-                    OutlinedTextField(
-                        value = baseUrl,
-                        onValueChange = { newValue ->
-                            baseUrl = newValue
-                            settingsRepo.putValue(SETTING_LOCAL_MODEL_BASE_URL, newValue)
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                        label = { Text(stringResource(Res.string.local_model_base_url)) },
-                        placeholder = { Text(stringResource(Res.string.local_model_base_url_hint)) },
-                        singleLine = true
-                    )
-                    Spacer(Modifier.height(10.dp))
-                    OutlinedTextField(
-                        value = modelName,
-                        onValueChange = { newValue ->
-                            modelName = newValue
-                            settingsRepo.putValue(SETTING_LOCAL_MODEL_NAME, newValue)
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                        label = { Text(stringResource(Res.string.local_model_name)) },
-                        singleLine = true
-                    )
-                }
-            }
-        }
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun SettingsDropdownField(
-    label: String,
-    options: List<Pair<String, String>>,
-    selected: String,
-    onSelect: (String) -> Unit
-) {
-    var expanded by remember { mutableStateOf(false) }
-    ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = it }) {
-        OutlinedTextField(
-            value = options.firstOrNull { it.first == selected }?.second ?: selected,
-            onValueChange = {},
-            readOnly = true,
-            label = { Text(label) },
-            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
-            modifier = Modifier.fillMaxWidth().menuAnchor(),
-            singleLine = true
-        )
-        ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-            options.forEach { (value, display) ->
-                DropdownMenuItem(
-                    text = { Text(display) },
-                    onClick = {
-                        expanded = false
-                        onSelect(value)
-                    }
+                OutlinedTextField(
+                    value = baseUrl,
+                    onValueChange = { newValue ->
+                        baseUrl = newValue
+                        settingsRepo.putValue(SETTING_LOCAL_MODEL_BASE_URL, newValue)
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text(stringResource(Res.string.local_model_base_url)) },
+                    placeholder = { Text(stringResource(Res.string.local_model_base_url_hint)) },
+                    singleLine = true
+                )
+                Spacer(Modifier.height(10.dp))
+                OutlinedTextField(
+                    value = modelName,
+                    onValueChange = { newValue ->
+                        modelName = newValue
+                        settingsRepo.putValue(SETTING_LOCAL_MODEL_NAME, newValue)
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text(stringResource(Res.string.local_model_name)) },
+                    singleLine = true
                 )
             }
         }
