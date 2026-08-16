@@ -59,7 +59,8 @@ import ai.fatai.feature.settings.SettingsRepository
 import ai.fatai.feature.settings.ThemeMode
 import ai.fatai.feature.model.LOCAL_MODEL_ENGINE_EMBEDDED
 import ai.fatai.feature.model.LOCAL_MODEL_ENGINE_HTTP
-import ai.fatai.feature.model.LocalModelDownloader
+import ai.fatai.feature.model.LocalModelEngine
+import ai.fatai.feature.model.LocalSpeedResult
 import ai.fatai.feature.model.SETTING_LOCAL_MODEL_BASE_URL
 import ai.fatai.feature.model.SETTING_LOCAL_MODEL_ENABLED
 import ai.fatai.feature.model.SETTING_LOCAL_MODEL_ENGINE
@@ -76,9 +77,9 @@ import fatai.composeapp.generated.resources.Res
 import fatai.composeapp.generated.resources.*
 import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.koinInject
-import org.koin.mp.KoinPlatform
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
+import kotlin.math.roundToInt
 
 class AISettingsScreen {
 
@@ -104,9 +105,9 @@ class AISettingsScreen {
         var editingMemory by remember { mutableStateOf<MemoryEntry?>(null) }
         var newMemoryContent by remember { mutableStateOf("") }
         var editMemoryContent by remember { mutableStateOf("") }
-        // Embedded (cactus) engines are Android-only; desktop and iOS expose the HTTP engine,
-        // so the download/engine controls are hidden there.
-        val localModelDownloader = remember { KoinPlatform.getKoin().getOrNull<LocalModelDownloader>() }
+        // The embedded needle2 engine is Android-only; desktop and iOS expose the HTTP engine,
+        // so the engine-mode dropdown is hidden there (see supportsEmbeddedLocalModel()).
+        val localModelEngine = koinInject<LocalModelEngine>()
 
         // Reload memories every time the screen opens and when remote changes arrive.
         LaunchedEffect(Unit) {
@@ -271,7 +272,7 @@ class AISettingsScreen {
                 Spacer(Modifier.height(8.dp))
                 LocalModelSection(
                     settingsRepo = settingsRepo,
-                    downloader = localModelDownloader,
+                    engine = localModelEngine,
                     scope = scope
                 )
 
@@ -786,28 +787,32 @@ private fun ClearMemoryDialog(
     )
 }
 
-private val EMBEDDED_MODEL_OPTIONS = listOf("qwen3-0.6", "gemma3-270m")
-
 @Composable
 private fun LocalModelSection(
     settingsRepo: SettingsRepository,
-    downloader: LocalModelDownloader?,
+    engine: LocalModelEngine,
     scope: CoroutineScope
 ) {
     var enabled by remember { mutableStateOf(settingsRepo.getValue(SETTING_LOCAL_MODEL_ENABLED) == "true") }
-    var engine by remember {
+    var engineMode by remember {
         mutableStateOf(settingsRepo.getValue(SETTING_LOCAL_MODEL_ENGINE) ?: LOCAL_MODEL_ENGINE_EMBEDDED)
     }
     var baseUrl by remember { mutableStateOf(settingsRepo.getValue(SETTING_LOCAL_MODEL_BASE_URL) ?: "") }
     var modelName by remember { mutableStateOf(settingsRepo.getValue(SETTING_LOCAL_MODEL_NAME) ?: "") }
-    var downloadState by remember {
-        mutableStateOf(
-            if (downloader != null && downloader.isModelDownloaded(modelName.ifBlank { EMBEDDED_MODEL_OPTIONS.first() })) {
-                DOWNLOAD_STATE_DONE
-            } else {
-                ""
-            }
-        )
+    var benchmarking by remember { mutableStateOf(false) }
+    var benchmarkError by remember { mutableStateOf<String?>(null) }
+    var speed by remember { mutableStateOf<LocalSpeedResult?>(null) }
+
+    fun runBenchmark() {
+        if (benchmarking) return
+        scope.launch {
+            benchmarking = true
+            benchmarkError = null
+            speed = engine.benchmark()
+                .onFailure { benchmarkError = it.message ?: "benchmark failed" }
+                .getOrNull()
+            benchmarking = false
+        }
     }
 
     Card(
@@ -845,63 +850,70 @@ private fun LocalModelSection(
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
                 Spacer(Modifier.height(10.dp))
 
-                if (downloader != null) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+                ) {
+                    Button(
+                        enabled = !benchmarking,
+                        onClick = ::runBenchmark,
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Text(stringResource(Res.string.local_model_benchmark))
+                    }
+                    Spacer(Modifier.width(12.dp))
+                    val currentSpeed = speed
+                    when {
+                        benchmarking -> Text(
+                            stringResource(Res.string.local_model_benchmark_running),
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                        benchmarkError != null -> {
+                            val message = benchmarkError
+                            Text(
+                                message ?: stringResource(Res.string.local_model_benchmark_failed),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.error
+                            )
+                        }
+                        currentSpeed != null -> Text(
+                            stringResource(
+                                Res.string.local_model_benchmark_result,
+                                formatTokensPerSecond(currentSpeed.tokensPerSecond),
+                                formatMillis(currentSpeed.timeToFirstTokenMs),
+                                formatMillis(currentSpeed.totalTimeMs)
+                            ),
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
+                }
+                Spacer(Modifier.height(10.dp))
+
+                if (supportsEmbeddedLocalModel()) {
                     SettingsDropdownField(
                         label = stringResource(Res.string.local_model_engine),
                         options = listOf(
                             LOCAL_MODEL_ENGINE_EMBEDDED to stringResource(Res.string.local_model_engine_embedded),
                             LOCAL_MODEL_ENGINE_HTTP to stringResource(Res.string.local_model_engine_http)
                         ),
-                        selected = engine,
+                        selected = engineMode,
                         onSelect = { selectedEngine ->
-                            engine = selectedEngine
+                            engineMode = selectedEngine
                             settingsRepo.putValue(SETTING_LOCAL_MODEL_ENGINE, selectedEngine)
                         }
                     )
                     Spacer(Modifier.height(10.dp))
                 }
 
-                val embeddedControls = engine == LOCAL_MODEL_ENGINE_EMBEDDED && downloader != null
-                if (embeddedControls) {
-                    SettingsDropdownField(
-                        label = stringResource(Res.string.local_model_name),
-                        options = EMBEDDED_MODEL_OPTIONS.map { it to it },
-                        selected = modelName.ifBlank { EMBEDDED_MODEL_OPTIONS.first() },
-                        onSelect = { selectedModel ->
-                            modelName = selectedModel
-                            settingsRepo.putValue(SETTING_LOCAL_MODEL_NAME, selectedModel)
-                            downloadState = if (downloader.isModelDownloaded(selectedModel)) DOWNLOAD_STATE_DONE else ""
-                        }
-                    )
-                    Spacer(Modifier.height(4.dp))
+                if (engineMode == LOCAL_MODEL_ENGINE_EMBEDDED && supportsEmbeddedLocalModel()) {
+                    // The bundled needle2 engine ships only for arm64-v8a; x86_64 emulators
+                    // automatically fall back to the cloud router.
                     Text(
                         stringResource(Res.string.local_model_arm64_only),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Spacer(Modifier.height(10.dp))
-                    Button(
-                        onClick = {
-                            scope.launch {
-                                downloadState = DOWNLOAD_STATE_RUNNING
-                                downloadState = if (downloader.downloadModel(modelName.ifBlank { EMBEDDED_MODEL_OPTIONS.first() }).isSuccess) {
-                                    DOWNLOAD_STATE_DONE
-                                } else {
-                                    DOWNLOAD_STATE_FAILED
-                                }
-                            }
-                        },
-                        enabled = downloadState != DOWNLOAD_STATE_RUNNING,
-                        shape = RoundedCornerShape(10.dp)
-                    ) {
-                        Text(
-                            when (downloadState) {
-                                DOWNLOAD_STATE_DONE -> stringResource(Res.string.local_model_downloaded)
-                                DOWNLOAD_STATE_FAILED -> stringResource(Res.string.local_model_download_failed)
-                                else -> stringResource(Res.string.local_model_download)
-                            }
-                        )
-                    }
                 } else {
                     OutlinedTextField(
                         value = baseUrl,
@@ -964,6 +976,11 @@ private fun SettingsDropdownField(
     }
 }
 
-private const val DOWNLOAD_STATE_DONE = "done"
-private const val DOWNLOAD_STATE_RUNNING = "running"
-private const val DOWNLOAD_STATE_FAILED = "failed"
+private fun formatTokensPerSecond(value: Double): String {
+    if (value.isNaN() || value.isInfinite()) return "—"
+    val tenths = (value * 10).roundToInt()
+    return "${tenths / 10}.${tenths % 10}"
+}
+
+private fun formatMillis(value: Double): String =
+    if (value.isNaN()) "—" else value.roundToInt().toString()

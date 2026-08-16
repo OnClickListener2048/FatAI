@@ -26,7 +26,6 @@ kotlin {
         androidMain.dependencies {
             implementation(libs.ktor.client.android)
             implementation(libs.ktor.client.okhttp)
-            implementation(libs.cactus.kotlin)
         }
         jvmMain.dependencies { implementation(libs.ktor.client.cio) }
         appleMain.dependencies { implementation(libs.ktor.client.darwin) }
@@ -36,5 +35,16 @@ kotlin {
 android {
     namespace = "ai.fatai.feature.model"
     compileSdk = libs.versions.android.compileSdk.get().toInt()
-    defaultConfig { minSdk = libs.versions.android.minSdk.get().toInt() }
+    defaultConfig {
+        minSdk = libs.versions.android.minSdk.get().toInt()
+        // The needle2 engine ships only an arm64-v8a static lib; x86_64 emulators
+        // gracefully fall back to the cloud gateway (see NeedleLocalModelEngine).
+        ndk { abiFilters += "arm64-v8a" }
+        externalNativeBuild {
+            cmake { arguments += "-DANDROID_STL=c++_static" }
+        }
+    }
+    externalNativeBuild {
+        cmake { path("src/androidMain/cpp/CMakeLists.txt") }
+    }
 }

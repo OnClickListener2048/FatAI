@@ -79,14 +79,15 @@
     <string name="local_model">Local model</string>
     <string name="local_model_description">Route lightweight tasks (memory extraction, title generation) to an on-device model to save cloud tokens.</string>
     <string name="local_model_engine">Engine</string>
-    <string name="local_model_engine_embedded">Embedded (cactus)</string>
+    <string name="local_model_engine_embedded">Embedded (needle2)</string>
     <string name="local_model_engine_http">HTTP (local service)</string>
     <string name="local_model_base_url">Base URL</string>
     <string name="local_model_base_url_hint">e.g. http://localhost:11434 (Ollama); use a non-8080 port for cactus serve</string>
     <string name="local_model_name">Model</string>
-    <string name="local_model_download">Download model</string>
-    <string name="local_model_downloaded">Downloaded</string>
-    <string name="local_model_download_failed">Download failed — check connectivity</string>
-    <string name="local_model_arm64_only">Embedded inference requires an ARM64 device.</string>
+    <string name="local_model_arm64_only">The bundled needle2 engine requires an ARM64 device.</string>
+    <string name="local_model_benchmark">Benchmark</string>
+    <string name="local_model_benchmark_running">Benchmarking…</string>
+    <string name="local_model_benchmark_failed">Benchmark failed</string>
+    <string name="local_model_benchmark_result">%1$s tok/s · TTFT %2$s ms · total %3$s ms</string>
     <string name="edit">Edit</string>
 </resources>

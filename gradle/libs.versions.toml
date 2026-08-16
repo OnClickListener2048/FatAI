@@ -27,7 +27,6 @@ composeIcons = "1.1.1"
 voyagerVersion = "1.1.0-beta03"
 zoomable = "1.7.0"
 decompose = "3.3.0"
-cactus = "1.4.1-beta"
 detekt = "1.23.8"
 kover = "0.9.3"
 composeStabilityAnalyzer = "0.6.4"
@@ -91,7 +90,6 @@ voyager-tab-navigator = { module = "cafe.adriel.voyager:voyager-tab-navigator", 
 voyager-transitions = { module = "cafe.adriel.voyager:voyager-transitions", version.ref = "voyagerVersion" }
 zoomable = { module = "com.mxalbert.zoomable:zoomable", version.ref = "zoomable" }
 decompose = { module = "com.arkivanov.decompose:decompose", version.ref = "decompose" }
-cactus-kotlin = { module = "com.cactuscompute:cactus", version.ref = "cactus" }
 decompose-compose = { module = "com.arkivanov.decompose:extensions-compose", version.ref = "decompose" }
 [plugins]
 androidApplication = { id = "com.android.application", version.ref = "agp" }

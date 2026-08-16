@@ -79,14 +79,15 @@
     <string name="local_model">本地模型</string>
     <string name="local_model_description">将轻量任务(记忆提取、标题生成)路由到端侧模型,节省云端 token。</string>
     <string name="local_model_engine">引擎</string>
-    <string name="local_model_engine_embedded">内嵌 (cactus)</string>
+    <string name="local_model_engine_embedded">内嵌 (needle2)</string>
     <string name="local_model_engine_http">HTTP(本地服务)</string>
     <string name="local_model_base_url">服务地址</string>
     <string name="local_model_base_url_hint">如 http://localhost:11434 (Ollama);cactus serve 请用非 8080 端口</string>
     <string name="local_model_name">模型</string>
-    <string name="local_model_download">下载模型</string>
-    <string name="local_model_downloaded">已下载</string>
-    <string name="local_model_download_failed">下载失败,请检查网络</string>
-    <string name="local_model_arm64_only">内嵌推理需要 ARM64 设备。</string>
+    <string name="local_model_arm64_only">内嵌 needle2 引擎需要 ARM64 设备。</string>
+    <string name="local_model_benchmark">测速</string>
+    <string name="local_model_benchmark_running">测速中…</string>
+    <string name="local_model_benchmark_failed">测速失败</string>
+    <string name="local_model_benchmark_result">%1$s tok/s · 首 token %2$s ms · 总耗时 %3$s ms</string>
     <string name="edit">编辑</string>
 </resources>
