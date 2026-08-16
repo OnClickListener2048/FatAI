@@ -322,11 +322,7 @@ internal fun ChatWorkspace(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
-                title = {
-                    val convId = state.currentConversationId
-                    val title = state.conversations.find { it.id == convId }?.title
-                    Text(title ?: "FatAI", maxLines = 1)
-                },
+                title = {},
                 navigationIcon = {
                     if (showDrawerToggle) {
                         IconButton(onClick = { scope.launch { drawerState.open() } }) {

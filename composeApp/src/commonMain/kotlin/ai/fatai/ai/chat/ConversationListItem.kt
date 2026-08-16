@@ -83,8 +83,7 @@ internal fun ConversationListItem(
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = if (conv.isPinned) "📌 ${conv.title}" else conv.title,
-                    style = MaterialTheme.typography.bodyMedium,
-                    maxLines = 1
+                    style = MaterialTheme.typography.bodyMedium
                 )
                 Text(
                     listOf(
