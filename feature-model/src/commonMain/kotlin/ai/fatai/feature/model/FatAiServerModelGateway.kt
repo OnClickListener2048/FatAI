@@ -21,6 +21,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerialName
+import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlin.time.TimeSource
@@ -83,7 +84,16 @@ class FatAiServerModelGateway(
             )
         }.execute { response ->
             if (!response.status.isSuccess()) {
-                throw IllegalStateException(response.bodyAsText().ifBlank { "FatAI server returned ${response.status.value}." })
+                // Server errors are ApiError JSON ({code, message}); surface a readable message
+                // instead of dumping the raw body into the error bubble.
+                val body = response.bodyAsText()
+                val apiError = runCatching { json.decodeFromString<ServerApiError>(body) }.getOrNull()
+                val detail = when {
+                    apiError != null && apiError.message != null -> apiError.code?.let { "$it: ${apiError.message}" } ?: apiError.message
+                    body.isNotBlank() -> body
+                    else -> "FatAI server returned ${response.status.value}."
+                }
+                throw IllegalStateException(detail)
             }
 
             var eventName: String? = null
@@ -206,4 +216,10 @@ private data class ServerUsage(
     @SerialName("prompt_tokens") val promptTokens: Int = 0,
     @SerialName("completion_tokens") val completionTokens: Int = 0,
     @SerialName("total_tokens") val totalTokens: Int = 0
+)
+
+@Serializable
+private data class ServerApiError(
+    val code: String? = null,
+    val message: String? = null
 )
