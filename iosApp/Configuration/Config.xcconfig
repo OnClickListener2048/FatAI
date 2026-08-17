@@ -1,6 +1,8 @@
 TEAM_ID=
 
 PRODUCT_NAME=FatAI
+// Swift 模块名必须与 KMP 框架名(FatAI)区分开, 否则 import FatAI 会被解析成应用模块自身
+PRODUCT_MODULE_NAME=iosApp
 PRODUCT_BUNDLE_IDENTIFIER=ai.fatai.app$(TEAM_ID)
 
 CURRENT_PROJECT_VERSION=1

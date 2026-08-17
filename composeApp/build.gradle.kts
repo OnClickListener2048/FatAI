@@ -33,6 +33,8 @@ kotlin {
             baseName = "FatAI"
             isStatic = false
             export("io.insert.koin:koin-core")
+            // SQLDelight 的原生 SQLite 驱动需要系统 libsqlite3
+            linkerOpts("-lsqlite3")
         }
     }
     
